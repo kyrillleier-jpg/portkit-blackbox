@@ -8,3 +8,4 @@ repos/
 re/*.tsv
 re/*.txt
 .DS_Store
+__pycache__/
