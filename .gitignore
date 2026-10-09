@@ -1,0 +1,10 @@
+firmware/
+out/
+repos/
+.venv/
+*.bin
+*.BIN
+*.zip
+re/*.tsv
+re/*.txt
+.DS_Store
