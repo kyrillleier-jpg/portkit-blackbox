@@ -1,0 +1,7 @@
+# Virtual SD card: include after boot.resc with $sd = @path/to/image (FAT32, MBR). See sim/sdhook.py.
+python "import sys; sys.path.append('$simdir'); import sdhook; sdhook.open_image('$sdimg')"
+cpu AddHook 0x08044FAC "import sdhook; sdhook.init(self)"
+cpu AddHook 0x08045188 "import sdhook; sdhook.status(self)"
+cpu AddHook 0x0804504C "import sdhook; sdhook.read(self)"
+cpu AddHook 0x080450BC "import sdhook; sdhook.write(self)"
+cpu AddHook 0x08045130 "import sdhook; sdhook.ioctl(self)"
