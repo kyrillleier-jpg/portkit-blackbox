@@ -93,3 +93,19 @@ def store_get(bus, store, param):
             v = int(bus.ReadDoubleWord(ent + 8 * k + 4))
             return v - (1 << 32) if v & 0x80000000 else v
     return None
+
+
+def find_stores(bus, param, lo=0x24013cb0, hi=0x24013cb0 + 0x8100):
+    """addresses in [lo, hi) that look like parameter stores holding param (entries pointer in RAM, small count)"""
+    found = []
+    for a in range(lo, hi, 4):
+        ent = int(bus.ReadDoubleWord(a + 4))
+        cnt = int(bus.ReadWord(a + 0xA))
+        if not (0x20000000 <= ent < 0x24080000 or 0x30000000 <= ent < 0x30048000 or 0xC0000000 <= ent < 0xC4000000) or not (0 < cnt <= 120):
+            continue
+        for k in range(cnt):
+            if int(bus.ReadWord(ent + 8 * k)) == param:
+                v = int(bus.ReadDoubleWord(ent + 8 * k + 4))
+                found.append((hex(a), hex(a - 0x24013cb0), v))
+                break
+    return found
