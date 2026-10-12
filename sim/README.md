@@ -65,6 +65,13 @@ Audio und Eingaben (2026-10-11):
 - `tests/render_master.py`: Settings-Store (echte Init), master_dist, Stock-Kompressor (Ctor 0x080B9D34, DSP
   0x080B9B04 ueber master_comp) blockweise auf einem echten Bus 0; `--examples out/sim/examples`.
 
+Engine-Last (2026-10-12): `prof <phase>` / `prof report` (sim/prof.py) zaehlt die ausgefuehrten Befehle pro Audio-
+Block (Eingang + Engine im audioTask). Pads spielen nur dann durch die Engine, wenn das Preset `cellmode` setzt
+(0 Sample, 1 Clip, 2 Slicer, 3 Granular); ohne Angabe streamt der Tipp an der Pad-Engine vorbei. Samples werden nicht
+vorgeladen, sondern beim Spielen von der Karte gelesen. Messung (8 Granular-Pads, Grain Count 8, Density 1000,
+Speed 0, Toggle): Leerlauf 66 500 (Stock) / 66 900 (pkY); 8 Pads 338 000 (Stock) / 302 000 (pkY, Zufall der Grains);
+mit allen pk-Features (Crunch/Drive/Filter 2 je Pad, FX2 + FX3 Hall, Distortion, SSL) 541 000 Befehle pro Block.
+
 pkX in der Simulation (2026-10-11): Tools -> Settings, LINKS -> Kompressor-Seite (Standardwerte -4 dB / 4 / 10 / 250 /
 -4 dB), RECHTS RECHTS -> Distortion-Seite (Off / +12 dB / 20.4 kHz / 100 % / 0 dB), TOOLS -> naechster Tools-Bildschirm.
 Kopfzeile der Master-Seiten: die der Settings-Seite (Version).

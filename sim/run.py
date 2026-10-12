@@ -4,6 +4,7 @@
   actions: wait <s> | press <HOME|TOOLS|LEFT|RIGHT> | shot <name> | hook <addr> <label> | ticks | py <code>
            capture <name> | capture-stop | input <raw> | set <param id> <value> | midi <hex> | note <nr> <s>
            tap <x> <y> [<s>] | touch <x> <y> | release (screen coordinates) | dump <addr> <len> <name>
+           prof <phase> | prof report | store <addr> <id> <value> (engine instructions per audio block, sim/prof.py)
   e.g.     python3 sim/run.py --image pk wait 12 shot pads press TOOLS wait 1 shot tools press LEFT wait 1 shot comp
 
 Screenshots go to out/sim/<name>.png (LTDC composition, sim/screenshot.py). Renode: ~/tools/renode (see README).
@@ -106,6 +107,18 @@ def build(image, sd, actions):
             path = os.path.join(OUT, actions[i + 3] + ".bin")
             lines.append(f'python "b=self.Machine.SystemBus; f=open(\'{path}\', \'ab\'); '
                          f'f.write(bytes(bytearray(b.ReadBytes({actions[i + 1]}, {actions[i + 2]})))); f.close()"')
+            i += 4
+        elif act == "prof":                                  # prof <phase>|report: engine instructions per block
+            if not any("prof.start" in l for l in lines):
+                for a in (0x08042458, 0x08042474):
+                    lines.append(f'cpu AddHook {a:#x} "import prof; prof.start(self)"')
+                for a in (0x08042468, 0x08042484):
+                    lines.append(f'cpu AddHook {a:#x} "import prof; prof.end(self)"')
+            arg = actions[i + 1]
+            lines.append('python "import prof; prof.report()"' if arg == "report" else f'python "import prof; prof.phase(\'{arg}\')"')
+            i += 2
+        elif act == "store":                                 # store <store addr> <id> <value>: any parameter store
+            lines.append(f'python "import sdhook; sdhook.store_set(self.Machine.SystemBus, {actions[i + 1]}, {actions[i + 2]}, {actions[i + 3]})"')
             i += 4
         elif act == "py":                                    # py <monitor python>: raw monitor python line
             lines.append('python "' + actions[i + 1] + '"')
