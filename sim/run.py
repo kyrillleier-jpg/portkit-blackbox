@@ -4,7 +4,8 @@
   actions: wait <s> | press <HOME|TOOLS|LEFT|RIGHT> | shot <name> | hook <addr> <label> | ticks | py <code>
            capture <name> | capture-stop | input <raw> | set <param id> <value> | midi <hex> | note <nr> <s>
            tap <x> <y> [<s>] | touch <x> <y> | release (screen coordinates) | dump <addr> <len> <name>
-           prof <phase> | prof report | store <addr> <id> <value> (engine instructions per audio block, sim/prof.py)
+           prof <phase> | prof report | store <addr> <id> <value>
+           mark <text> | watch <addr> <label> (reads) | watchw <addr> <label> <Byte|Word|DoubleWord> (writes) (engine instructions per audio block, sim/prof.py)
   e.g.     python3 sim/run.py --image pk wait 12 shot pads press TOOLS wait 1 shot tools press LEFT wait 1 shot comp
 
 Screenshots go to out/sim/<name>.png (LTDC composition, sim/screenshot.py). Renode: ~/tools/renode (see README).
@@ -120,6 +121,19 @@ def build(image, sd, actions):
         elif act == "store":                                 # store <store addr> <id> <value>: any parameter store
             lines.append(f'python "import sdhook; sdhook.store_set(self.Machine.SystemBus, {actions[i + 1]}, {actions[i + 2]}, {actions[i + 3]})"')
             i += 4
+        elif act == "mark":                                  # mark <text>: a line in the log
+            lines.append(f'python "print(\'MARK {actions[i + 1]}\')"')
+            i += 2
+        elif act == "watch":                                 # watch <addr> <label>: log PC / LR of every read there
+            lines.append(f'sysbus AddWatchpointHook {actions[i + 1]} DoubleWord Read "self.Log(LogLevel.Warning, '
+                         f'\'HOOK {actions[i + 2]} pc=0x%x lr=0x%x\' % (self.GetMachine()[\'sysbus.cpu\'].PC.RawValue, '
+                         f'self.GetMachine()[\'sysbus.cpu\'].LR.RawValue))"')
+            i += 3
+        elif act == "watchw":                                # watchw <addr> <label> <width>: PC / LR of every write
+            lines.append(f'sysbus AddWatchpointHook {actions[i + 1]} {actions[i + 3]} Write "self.Log(LogLevel.Warning, '
+                         f'\'HOOK {actions[i + 2]} pc=0x%x lr=0x%x\' % (self.GetMachine()[\'sysbus.cpu\'].PC.RawValue, '
+                         f'self.GetMachine()[\'sysbus.cpu\'].LR.RawValue))"')
+            i += 4
         elif act == "py":                                    # py <monitor python>: raw monitor python line
             lines.append('python "' + actions[i + 1] + '"')
             i += 2
@@ -149,8 +163,9 @@ def main(a):
     resc = os.path.join(OUT, "run.resc")
     open(resc, "w").write("\n".join(lines) + "\n")
     with open(os.path.join(OUT, "run.log"), "w") as log:
-        r = subprocess.run([RENODE, "--console", "--disable-gui", "--plain", resc], stdout=log, stderr=subprocess.STDOUT,
-                           timeout=1800)
+        # no stdin: on a script error Renode's console gets EOF and exits instead of waiting for input
+        r = subprocess.run([RENODE, "--console", "--disable-gui", "--plain", resc], stdin=subprocess.DEVNULL, stdout=log,
+                           stderr=subprocess.STDOUT, timeout=1800)
     print("renode exit", r.returncode)
     for name, d in shots:
         subprocess.run([sys.executable, "-I", os.path.join(SIM, "screenshot.py"), d, os.path.join(OUT, name + ".png")])
