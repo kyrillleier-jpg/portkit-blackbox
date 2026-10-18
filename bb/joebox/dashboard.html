@@ -1,0 +1,270 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>JB1+pk Builder</title>
+<style>
+:root {
+  --bg: #f6f5f2; --panel: #ffffff; --ink: #1d1d1f; --muted: #6b6b70; --line: #e3e1dc;
+  --accent: #d6336c; --accent-ink: #ffffff; --jb: #2f6fd6; --pk: #d6336c; --ok: #1f8a4c; --bad: #c0392b;
+  --lock: #9a978f; --chip: #efede8; --code: #f1efea;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #141414; --panel: #1e1e1f; --ink: #ececec; --muted: #9b9ba1; --line: #2e2e30;
+    --accent: #ff5fa2; --accent-ink: #141414; --jb: #6ea1ff; --pk: #ff5fa2; --ok: #4cc27c; --bad: #ff6b5e;
+    --lock: #6d6b66; --chip: #2a2a2c; --code: #232325;
+  }
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--ink);
+  font: 15px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif; }
+header { padding: 28px 32px 12px; max-width: 1280px; margin: 0 auto; }
+h1 { margin: 0; font-size: 26px; letter-spacing: -0.01em; }
+h1 span { color: var(--accent); }
+.sub { color: var(--muted); margin-top: 4px; }
+main { max-width: 1280px; margin: 0 auto; padding: 0 32px 140px; }
+.bar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 16px 0; }
+.bar .grow { flex: 1; }
+button, .btn { font: inherit; border: 1px solid var(--line); background: var(--panel); color: var(--ink);
+  padding: 7px 12px; border-radius: 8px; cursor: pointer; text-decoration: none; display: inline-block; }
+button:hover, .btn:hover { border-color: var(--muted); }
+button.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); font-weight: 600; }
+button:disabled { opacity: .5; cursor: default; }
+.seg button.on { background: var(--ink); color: var(--bg); border-color: var(--ink); }
+input[type=search] { font: inherit; padding: 7px 10px; border-radius: 8px; border: 1px solid var(--line);
+  background: var(--panel); color: var(--ink); min-width: 220px; }
+table { width: 100%; border-collapse: collapse; background: var(--panel); border: 1px solid var(--line);
+  border-radius: 12px; overflow: hidden; }
+th, td { text-align: left; padding: 9px 12px; border-bottom: 1px solid var(--line); vertical-align: top; }
+th { font-size: 12px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); background: var(--chip); }
+tr.grp td { background: var(--chip); font-weight: 600; padding-top: 12px; }
+tr.off td:not(:first-child) { color: var(--muted); }
+tr.off .fname { text-decoration: line-through; text-decoration-color: var(--line); }
+td.ck { width: 44px; }
+input[type=checkbox] { width: 18px; height: 18px; accent-color: var(--accent); }
+.fname { font-weight: 600; }
+.badge { display: inline-block; font-size: 11px; padding: 1px 7px; border-radius: 99px; background: var(--chip);
+  color: var(--muted); margin-left: 6px; font-weight: 500; vertical-align: 1px; }
+.badge.jb { color: var(--jb); } .badge.pk { color: var(--pk); } .badge.lock { color: var(--lock); }
+.note { color: var(--muted); font-size: 13px; }
+.dock { position: fixed; left: 0; right: 0; bottom: 0; background: var(--panel); border-top: 1px solid var(--line); }
+.dock .in { max-width: 1280px; margin: 0 auto; padding: 12px 32px; display: flex; gap: 12px; align-items: center;
+  flex-wrap: wrap; }
+.status { font-size: 14px; color: var(--muted); }
+.status b { color: var(--ink); }
+.panel { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 16px; margin: 16px 0; }
+.panel h2 { margin: 0 0 10px; font-size: 17px; }
+pre { background: var(--code); border-radius: 8px; padding: 10px; max-height: 340px; overflow: auto; font-size: 12px;
+  margin: 0; white-space: pre-wrap; word-break: break-all; }
+.ok { color: var(--ok); } .bad { color: var(--bad); }
+.hash { font-family: ui-monospace, Menlo, monospace; font-size: 12px; word-break: break-all; color: var(--muted); }
+.shots { display: flex; gap: 12px; flex-wrap: wrap; }
+.shots img { width: 320px; max-width: 100%; image-rendering: pixelated; border-radius: 8px; border: 1px solid var(--line); }
+@media (max-width: 760px) {
+  header, main { padding-left: 16px; padding-right: 16px; } .dock .in { padding: 10px 16px; }
+  td.where, th.where { display: none; } input[type=search] { min-width: 0; width: 100%; }
+}
+</style>
+</head>
+<body>
+<header>
+  <h1>JB1+pk <span>Builder</span></h1>
+  <div class="sub">Alle Abweichungen der Blackbox-Firmware von Stock 3.1.9 &middot; JOEBOX 1 (blackbox-mod, Justin Joe) + portkit.
+    Häkchen setzen, bauen, beide Dateien ins SD-Root.</div>
+</header>
+<main>
+  <div class="bar">
+    <div class="seg" id="presets">
+      <button data-p="all">Alles</button><button data-p="core">Nur Kern</button>
+      <button data-p="jb">Nur JOEBOX</button><button data-p="pk">Kern + portkit</button>
+    </div>
+    <div class="grow"></div>
+    <div class="seg" id="filters">
+      <button data-f="" class="on">Alle</button><button data-f="JOEBOX">JOEBOX</button><button data-f="portkit">portkit</button>
+    </div>
+    <input type="search" id="q" placeholder="Feature suchen …">
+  </div>
+  <table>
+    <thead><tr><th></th><th>Feature</th><th class="where">Wo am Gerät</th><th>Was es tut</th></tr></thead>
+    <tbody id="rows"></tbody>
+  </table>
+  <p class="note">Häkchen schalten ganze Gruppen: Features einer Gruppe hängen am selben Code und kommen nur zusammen.
+    <span class="badge lock">fest</span> = Kern: andere Teile brauchen ihn (Speicher beim Boot, Bank-2-Loader, Hook-Ketten).
+    Funktionen mit „(Bank 2)“ laufen nur mit dem passenden <code>BBEXTRA.BIN</code>; ohne es spielen sie das Audio unverändert durch.</p>
+
+  <div class="panel">
+    <h2>Presets an diesen Build anpassen</h2>
+    <p class="note">Prüft <code>Presets/*/preset.xml</code> und <code>settings.tml</code> gegen den zuletzt gebauten Build:
+      Werte, die es dort nicht gibt (z.&nbsp;B. Sync 1/32, Kompressor SSL, Rec Input FX), bekommen den nächsten Stock-Wert.
+      „Anpassen“ sichert die betroffenen Dateien vorher als zip und ändert nur diese Werte.</p>
+    <div class="bar">
+      <input type="search" id="cpath" class="grow" placeholder="SD-Root, Presets-Ordner oder Datei, z. B. /Volumes/BLACKBOX">
+      <button id="ccheck">Prüfen</button><button id="capply">Anpassen</button>
+    </div>
+  </div>
+
+  <div class="panel" id="out" hidden>
+    <h2 id="out-title">Build</h2>
+    <div id="result"></div>
+    <pre id="log"></pre>
+  </div>
+</main>
+<div class="dock"><div class="in">
+  <div class="status grow" id="sum"></div>
+  <button id="sim" disabled>Simulation prüfen</button>
+  <button class="primary" id="build">Bauen</button>
+</div></div>
+<script>
+let G = {}, F = [], sel = new Set(), filt = "", q = "", polling = null;
+const $ = s => document.querySelector(s);
+const esc = s => String(s).replace(/[&<>"]/g, c => ({"&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;"}[c]));
+
+function resolve(s) {
+  const out = new Set([...s].filter(g => G[g]));
+  for (const g in G) if (G[g].core) out.add(g);
+  let ch = true;
+  while (ch) { ch = false; for (const g of [...out]) for (const r of G[g].requires) if (!out.has(r)) { out.add(r); ch = true; } }
+  return out;
+}
+
+function render() {
+  const eff = resolve(sel);
+  let html = "", last = null;
+  const order = ["JOEBOX", "portkit"];
+  for (const origin of order) {
+    if (filt && filt !== origin) continue;
+    const rows = F.filter(f => G[f.group].origin === origin &&
+      (!q || (f.name + f.what + f.where + G[f.group].label).toLowerCase().includes(q)));
+    if (!rows.length) continue;
+    html += `<tr class="grp"><td></td><td colspan="3">${origin === "JOEBOX" ? "JOEBOX 1 (blackbox-mod)" : "portkit"}</td></tr>`;
+    for (const f of rows) {
+      const g = G[f.group], on = eff.has(f.group), lock = g.core;
+      const req = sel.has(f.group) ? "" : (on && !lock ? " (gebraucht)" : "");
+      html += `<tr class="${on ? "" : "off"}"><td class="ck"><input type="checkbox" data-g="${f.group}"
+        ${on ? "checked" : ""} ${lock ? "disabled" : ""} title="${esc(g.label)}"></td>
+        <td><span class="fname">${esc(f.name)}</span>
+          <span class="badge ${origin === "JOEBOX" ? "jb" : "pk"}">${esc(g.label)}</span>
+          ${lock ? '<span class="badge lock">fest</span>' : ""}${req ? `<span class="badge">${req.trim()}</span>` : ""}</td>
+        <td class="where">${esc(f.where)}</td><td>${esc(f.what)}</td></tr>`;
+    }
+  }
+  $("#rows").innerHTML = html;
+  const nf = F.filter(f => eff.has(f.group)).length;
+  const pk = [...eff].filter(g => g.startsWith("pk_")).length;
+  $("#sum").innerHTML = `<b>${nf}</b> von ${F.length} Features &middot; ${[...eff].length} Gruppen` +
+    (pk ? ` &middot; Version <b>JB1+pk</b>` : ` &middot; ohne portkit-Funktionen`);
+  try { localStorage.setItem("jbsel", JSON.stringify([...sel])); } catch (e) {}
+}
+
+$("#rows").addEventListener("change", e => {
+  const g = e.target.dataset.g; if (!g) return;
+  if (e.target.checked) sel.add(g); else sel.delete(g);
+  render();
+});
+$("#presets").addEventListener("click", e => {
+  const p = e.target.dataset.p; if (!p) return;
+  const opt = Object.keys(G).filter(g => !G[g].core);
+  sel = new Set(p === "all" ? opt : p === "core" ? [] : p === "jb" ? opt.filter(g => !g.startsWith("pk_"))
+    : opt.filter(g => g.startsWith("pk_")));
+  render();
+});
+$("#filters").addEventListener("click", e => {
+  if (e.target.dataset.f === undefined) return;
+  filt = e.target.dataset.f;
+  document.querySelectorAll("#filters button").forEach(b => b.classList.toggle("on", b === e.target));
+  render();
+});
+$("#q").addEventListener("input", e => { q = e.target.value.toLowerCase(); render(); });
+
+async function post(url, body) {
+  const r = await fetch(url, {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify(body || {})});
+  return r.json();
+}
+$("#build").onclick = async () => {
+  const r = await post("/api/build", {groups: [...sel]});
+  if (r.started) poll(); else alert("Es läuft schon ein Auftrag.");
+};
+async function convert(apply) {
+  const path = $("#cpath").value.trim();
+  if (!path) return alert("Pfad angeben.");
+  if (apply && !confirm("Dateien unter " + path + " ändern? Vorher wird eine Sicherung (zip) angelegt.")) return;
+  try { localStorage.setItem("jbcpath", path); } catch (e) {}
+  const r = await post("/api/convert", {path, apply});
+  if (r.started) poll(); else alert(r.error || "Es läuft schon ein Auftrag.");
+}
+$("#ccheck").onclick = () => convert(false);
+$("#capply").onclick = () => convert(true);
+try { $("#cpath").value = localStorage.getItem("jbcpath") || ""; } catch (e) {}
+$("#sim").onclick = async () => {
+  const r = await post("/api/sim");
+  if (r.started) poll(); else alert(r.error || "Es läuft schon ein Auftrag.");
+};
+
+function showResult(j) {
+  const res = $("#result");
+  if (j.kind === "build" && j.result && j.result.files) {
+    const f = j.result.files;
+    res.innerHTML = `<p class="${j.state === "done" ? "ok" : "bad"}"><b>${j.state === "done" ? "Fertig, alle Prüfungen grün." : "Build gebaut, aber eine Prüfung ist fehlgeschlagen – nicht flashen."}</b>
+      Bank 1: noch ${j.result.cave_free} Bytes frei.</p>
+      <p><a class="btn" href="/download/zip">Beide Dateien (zip)</a> <a class="btn" href="/download/BLACKBOX.bin">BLACKBOX.bin</a>
+      <a class="btn" href="/download/BBEXTRA.BIN">BBEXTRA.BIN</a></p>
+      <div class="hash">BLACKBOX.bin ${f["BLACKBOX.bin"].bytes} B · ${f["BLACKBOX.bin"].sha256}<br>
+      BBEXTRA.BIN ${f["BBEXTRA.BIN"].bytes} B · ${f["BBEXTRA.BIN"].sha256}</div>`;
+  } else if (j.kind === "sim" && j.result && j.result.shots) {
+    res.innerHTML = `<div class="shots">${j.result.shots.map(s => `<img src="/shot/${s}.png?t=${Date.now()}" alt="${s}">`).join("")}</div>`;
+  } else if (j.kind === "convert" && j.result && j.result.reports) {
+    const c = j.result, rows = [];
+    for (const r of c.reports) {
+      for (const x of r.changes) rows.push(`<tr><td>${esc(r.file.split("/").slice(-2).join("/"))}</td><td>${esc(x.param)}</td><td>${esc(x.note)}</td></tr>`);
+      for (const k in r.missing) rows.push(`<tr><td>${esc(r.file.split("/").slice(-2).join("/"))}</td><td>${esc(k)}</td><td class="note">von diesem Build nicht registriert (${r.missing[k]}×), bleibt in der Datei</td></tr>`);
+    }
+    res.innerHTML = `<p class="${c.changes ? "" : "ok"}"><b>${c.files} Dateien geprüft, ${c.changes} Werte in ${c.changed_files} Dateien
+      ${c.applied ? "geändert" : (c.changes ? "würden geändert" : "– nichts zu tun")}.</b>
+      ${c.backup ? `<br><span class="hash">Sicherung: ${esc(c.backup)}</span>` : ""}</p>` +
+      (rows.length ? `<table><thead><tr><th>Datei</th><th>Parameter</th><th>Was</th></tr></thead><tbody>${rows.join("")}</tbody></table>` : "");
+  } else if (j.state === "failed") {
+    res.innerHTML = `<p class="bad"><b>Fehlgeschlagen.</b> Details im Log.</p>`;
+  } else res.innerHTML = "";
+}
+
+function poll() {
+  $("#out").hidden = false;
+  $("#build").disabled = $("#sim").disabled = $("#ccheck").disabled = $("#capply").disabled = true;
+  clearInterval(polling);
+  polling = setInterval(async () => {
+    const j = await (await fetch("/api/job")).json();
+    $("#out-title").textContent = ({sim: "Simulation", convert: "Presets"}[j.kind] || "Build") +
+      (j.state === "running" ? ` läuft … ${Math.round(Date.now() / 1000 - j.started)} s` : "");
+    const log = $("#log");
+    const atEnd = log.scrollTop + log.clientHeight >= log.scrollHeight - 20;
+    log.textContent = j.log.join("\n");
+    if (atEnd) log.scrollTop = log.scrollHeight;
+    showResult(j);
+    if (j.state !== "running") {
+      clearInterval(polling);
+      $("#build").disabled = $("#ccheck").disabled = $("#capply").disabled = false;
+      $("#sim").disabled = !(j.kind === "sim" || (j.result && j.result.files) || hasBuild);
+    }
+  }, 1000);
+}
+
+let hasBuild = false;
+(async () => {
+  const d = await (await fetch("/api/features")).json();
+  G = d.groups; F = d.features;
+  let saved = null;
+  try { saved = JSON.parse(localStorage.getItem("jbsel")); } catch (e) {}
+  if (saved) sel = new Set(saved.filter(g => G[g] && !G[g].core));
+  else if (d.last) sel = new Set(d.last.groups.filter(g => !G[g].core));
+  else sel = new Set(Object.keys(G).filter(g => !G[g].core));
+  hasBuild = !!d.last;
+  $("#sim").disabled = !hasBuild;
+  render();
+  const j = await (await fetch("/api/job")).json();
+  if (j.state === "running") poll();
+})();
+</script>
+</body>
+</html>

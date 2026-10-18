@@ -22,8 +22,21 @@ SIM = os.path.join(ROOT, "sim")
 OUT = os.path.join(ROOT, "out", "sim")
 RENODE = os.path.expanduser("~/tools/renode/Renode.app/Contents/MacOS/renode")
 IMAGES = {"stock": os.path.join(ROOT, "firmware", "MICRO.BIN"),
+          "bb": os.path.join(ROOT, "firmware", "BLACKBOX.bin"),
+          "bbmod": os.path.join(ROOT, "out", "bbmod", "BLACKBOX.bin"),
+          "bbbase": os.path.join(ROOT, "out", "bb", "base", "BLACKBOX.bin"),
+          "bbpk": os.path.join(ROOT, "out", "bb", "master+clip+fx3", "BLACKBOX.bin"),
+          "jb": os.path.join(ROOT, "out", "bb", "jb", "release", "BLACKBOX.bin"),
+          "jbstock": os.path.join(ROOT, "out", "bb", "jb", "tree", "out",
+                                  "solo+slice+duck+chord+cond+filter+cpu+od+comp+seqfix+fx2+munchi+master+fault+cave",
+                                  "BLACKBOX.bin"),
           "pk": os.path.join(ROOT, "out", "fidelity+pages+padpages+sound+reverb+fx3+master+cave", "MICRO.BIN")}
 BUTTONS = {"HOME": ("gpioPortG", 3), "TOOLS": ("gpioPortD", 4), "LEFT": ("gpioPortC", 13), "RIGHT": ("gpioPortB", 13)}
+# Blackbox 3.1.9: 13 keys, active low, polled at 0x080438DE (table index = order below; names = index until known)
+BB_BUTTONS = {f"B{k}": pp for k, pp in enumerate([
+    ("gpioPortI", 8), ("gpioPortD", 4), ("gpioPortD", 7), ("gpioPortI", 12), ("gpioPortI", 14), ("gpioPortG", 3),
+    ("gpioPortH", 7), ("gpioPortC", 13), ("gpioPortB", 13), ("gpioPortJ", 1), ("gpioPortH", 4), ("gpioPortC", 2),
+    ("gpioPortC", 3)])}
 PRESS_S = 0.1
 TOUCH_FLIP_Y = os.environ.get("SIM_TOUCH_FLIP_Y", "1") == "1"   # the UI's y counts from the bottom (checked: see README)
 MIDI_INS = ("uart4", "usart6")                               # their TX carries MIDI clock (0xf8): the two MIDI ports
@@ -34,13 +47,18 @@ def body(path):
     return [l for l in open(path).read().splitlines() if l.strip() and not l.startswith("#")]
 
 
-def build(image, sd, actions):
+def build(image, sd, actions, repl="micro.repl", bank2=None):
+    flip = TOUCH_FLIP_Y and repl == "micro.repl"         # Blackbox: touch y counts from the top (checked: VEL slider)
     lines = [f"include @{os.path.join(SIM, 'PortkitAudioDMA.cs')}", f"include @{os.path.join(SIM, 'PortkitGT911.cs')}",
-             f"$bin=@{image}", f"$repl=@{os.path.join(SIM, 'micro.repl')}", f"include @{os.path.join(SIM, 'boot.resc')}"]
-    for port, pin in BUTTONS.values():
+             f"$bin=@{image}", f"$repl=@{os.path.join(SIM, repl)}", f"include @{os.path.join(SIM, 'boot.resc')}"]
+    if bank2:                                            # flash bank 2 as the card loader would leave it (JOEBOX)
+        lines.append(f"sysbus LoadBinary @{os.path.abspath(bank2)} 0x08100000")
+    keys = BUTTONS if repl == "micro.repl" else BB_BUTTONS
+    for port, pin in keys.values():
         lines.append(f"sysbus.{port} OnGPIO {pin} true")
-    lines += [l.replace("$simdir", SIM).replace("$sdimg", sd) for l in body(os.path.join(SIM, "sd.resc"))]
-    for u in UARTS:                                          # serial output of every UART -> out/sim/uart_<name>.txt
+    sdr = "sd.resc" if repl == "micro.repl" else "sd_blackbox.resc"   # diskio hooks at each firmware's addresses
+    lines += [l.replace("$simdir", SIM).replace("$sdimg", sd) for l in body(os.path.join(SIM, sdr))]
+    for u in (x for x in UARTS if not (repl != "micro.repl" and x == "lpuart1")):   # serial output -> out/sim/uart_<name>.txt
         lines.append(f"sysbus.{u} CreateFileBackend @{os.path.join(OUT, 'uart_' + u + '.txt')} true")
     shots = []
     i = 0
@@ -50,9 +68,17 @@ def build(image, sd, actions):
             lines.append(f'emulation RunFor "{float(actions[i + 1])}"')
             i += 2
         elif act == "press":
-            port, pin = BUTTONS[actions[i + 1].upper()]
+            port, pin = keys[actions[i + 1].upper()]
             lines += [f"sysbus.{port} OnGPIO {pin} false", f'emulation RunFor "{PRESS_S}"',
                       f"sysbus.{port} OnGPIO {pin} true", f'emulation RunFor "{PRESS_S}"']
+            i += 2
+        elif act == "peek":                                  # peek <addr> <label> <reg> <off>: log byte at reg+off, if nonzero
+            lines.append(f'cpu AddHook {actions[i + 1]} "v=self.GetMachine().SystemBus.ReadByte(self.GetRegisterUnsafe({actions[i + 3]}).RawValue + {actions[i + 4]}); '
+                         f'(v and self.Log(LogLevel.Warning, \'HOOK {actions[i + 2]} %d\' % v))"')
+            i += 5
+        elif act in ("keydown", "keyup"):                     # keydown / keyup <key>: hold a key (combinations)
+            port, pin = keys[actions[i + 1].upper()]
+            lines.append(f"sysbus.{port} OnGPIO {pin} {'false' if act == 'keydown' else 'true'}")
             i += 2
         elif act == "hook":                                  # hook <addr> <label>: log each time it runs
             lines.append(f'cpu AddHook {actions[i + 1]} "self.Log(LogLevel.Warning, \'HOOK {actions[i + 2]} r0=0x%x r1=0x%x\' % '
@@ -93,12 +119,12 @@ def build(image, sd, actions):
             if i < len(actions) and actions[i].replace(".", "").isdigit():
                 dur = float(actions[i])
                 i += 1
-            ux, uy = x, (239 - y) if TOUCH_FLIP_Y else y
+            ux, uy = x, (239 - y) if flip else y
             lines += [f'python "self.Machine[\'sysbus.i2c1.touch\'].Touch({ux}, {uy})"', f'emulation RunFor "{dur}"',
                       'python "self.Machine[\'sysbus.i2c1.touch\'].Release()"', 'emulation RunFor "0.15"']
         elif act == "touch":                                 # touch <x> <y>: finger down (screen coordinates), stays
             x, y = int(actions[i + 1]), int(actions[i + 2])
-            uy = (239 - y) if TOUCH_FLIP_Y else y
+            uy = (239 - y) if flip else y
             lines.append(f'python "self.Machine[\'sysbus.i2c1.touch\'].Touch({x}, {uy})"')
             i += 3
         elif act == "release":
@@ -121,6 +147,9 @@ def build(image, sd, actions):
         elif act == "store":                                 # store <store addr> <id> <value>: any parameter store
             lines.append(f'python "import sdhook; sdhook.store_set(self.Machine.SystemBus, {actions[i + 1]}, {actions[i + 2]}, {actions[i + 3]})"')
             i += 4
+        elif act == "mips":                                  # mips <n>: simulated CPU speed (Renode default 100)
+            lines.append(f"cpu PerformanceInMips {actions[i + 1]}")
+            i += 2
         elif act == "mark":                                  # mark <text>: a line in the log
             lines.append(f'python "print(\'MARK {actions[i + 1]}\')"')
             i += 2
@@ -134,6 +163,26 @@ def build(image, sd, actions):
                          f'\'HOOK {actions[i + 2]} pc=0x%x lr=0x%x\' % (self.GetMachine()[\'sysbus.cpu\'].PC.RawValue, '
                          f'self.GetMachine()[\'sysbus.cpu\'].LR.RawValue))"')
             i += 4
+        elif act == "fill":                                  # fill <addr> <len> <byte>: memory pattern (e.g. before boot)
+            n, v = int(actions[i + 2], 0), int(actions[i + 3], 0)
+            path = os.path.join(OUT, f"fill_{v:02x}_{n:x}.bin")
+            if not os.path.exists(path):
+                with open(path, "wb") as f:
+                    f.write(bytes([v]) * n)
+            lines.append(f"sysbus LoadBinary @{path} {actions[i + 1]}")
+            i += 4
+        elif act == "regs":                                  # regs <addr> <label>: log r0-r3 each time it runs
+            lines.append(f'cpu AddHook {actions[i + 1]} "self.Log(LogLevel.Warning, \'HOOK {actions[i + 2]} '
+                         f'r0=0x%x r1=0x%x r2=0x%x r3=0x%x lr=0x%x\' % tuple(self.GetRegisterUnsafe(k).RawValue '
+                         f'for k in (0, 1, 2, 3, 14)))"')
+            i += 3
+        elif act == "regsx":                                 # regsx <addr> <label>: log r4-r8, [r4+0x18], sp
+            lines.append(f'cpu AddHook {actions[i + 1]} "c=self; b=self.GetMachine().SystemBus; '
+                         f'self.Log(LogLevel.Warning, \'HOOK {actions[i + 2]} r4=0x%x r5=0x%x r6=0x%x r7=0x%x r8=0x%x id=0x%x sp=0x%x\' % '
+                         f'(c.GetRegisterUnsafe(4).RawValue, c.GetRegisterUnsafe(5).RawValue, c.GetRegisterUnsafe(6).RawValue, '
+                         f'c.GetRegisterUnsafe(7).RawValue, c.GetRegisterUnsafe(8).RawValue, b.ReadDoubleWord(c.GetRegisterUnsafe(4).RawValue + 0x18), '
+                         f'c.SP.RawValue))"')
+            i += 3
         elif act == "py":                                    # py <monitor python>: raw monitor python line
             lines.append('python "' + actions[i + 1] + '"')
             i += 2
@@ -151,15 +200,19 @@ def build(image, sd, actions):
 
 
 def main(a):
-    image, sd = IMAGES["stock"], os.path.join(OUT, "sd.img")
+    image, sd, repl, bank2 = IMAGES["stock"], os.path.join(OUT, "sd.img"), "micro.repl", None
     while a and a[0].startswith("--"):
         if a[0] == "--image":
             image = IMAGES.get(a[1], a[1])
+        elif a[0] == "--repl":                               # platform description in sim/ (blackbox.repl)
+            repl = a[1]
         elif a[0] == "--sd":
             sd = os.path.abspath(a[1])
+        elif a[0] == "--bank2":                              # flash bank 2 contents (JOEBOX: out/bb/jb/bank2.bin)
+            bank2 = a[1]
         a = a[2:]
     os.makedirs(OUT, exist_ok=True)
-    lines, shots = build(image, sd, a)
+    lines, shots = build(image, sd, a, repl, bank2)
     resc = os.path.join(OUT, "run.resc")
     open(resc, "w").write("\n".join(lines) + "\n")
     with open(os.path.join(OUT, "run.log"), "w") as log:
@@ -168,7 +221,9 @@ def main(a):
                            stderr=subprocess.STDOUT, timeout=1800)
     print("renode exit", r.returncode)
     for name, d in shots:
-        subprocess.run([sys.executable, "-I", os.path.join(SIM, "screenshot.py"), d, os.path.join(OUT, name + ".png")])
+        rot = "270" if repl == "micro.repl" else "0"     # Micro panel is portrait, the Blackbox LTDC landscape
+        subprocess.run([sys.executable, "-I", os.path.join(SIM, "screenshot.py"), d, os.path.join(OUT, name + ".png"),
+                        "--rot", rot])
 
 
 if __name__ == "__main__":
