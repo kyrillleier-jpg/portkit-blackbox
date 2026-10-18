@@ -13,6 +13,7 @@ from System.IO import FileStream, FileMode, FileAccess, FileShare, SeekOrigin
 SECTOR = 512
 _f = [None]
 stats = {"read": 0, "write": 0}
+bufs = {}                                                  # buffer address -> (reads, writes)
 
 
 def open_image(path):
@@ -44,6 +45,8 @@ def read(cpu):
     _f[0].Read(data, 0, n)
     cpu.Bus.WriteBytes(data, buf)
     stats["read"] += count
+    r, w = bufs.get(buf, (0, 0))
+    bufs[buf] = (r + count, w)
     _ret(cpu, 0)
 
 
@@ -55,6 +58,8 @@ def write(cpu):
     _f[0].Write(data, 0, n)
     _f[0].Flush()
     stats["write"] += count
+    r, w = bufs.get(buf, (0, 0))
+    bufs[buf] = (r, w + count)
     _ret(cpu, 0)
 
 
