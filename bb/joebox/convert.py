@@ -37,6 +37,7 @@ FALLBACK = {
     "synctype": {"1/32": "1/16"},
     "globcomp": {"SSL": "Glue"},
     "recinput": {"FX": "Resam", "USB": "L+R"},
+    "insinput": {"USB": "Off"},
     "interpqual": {k: "Normal" for k in ("SP1200", "SP-12", "S950", "MPC60", "SP Raw", "S950 Lo", "SP 45",
                                          "16k", "12k", "10k", "8k", "6k", "4k", "2k")},
 }

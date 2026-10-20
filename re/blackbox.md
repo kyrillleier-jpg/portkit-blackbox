@@ -193,3 +193,13 @@ Am Geraet (2026-10-20): funktioniert grundlegend (Rueckmeldung); Mithoeren fehlt
 Offen: weitere Punkte am Geraet. Zu pruefen: erscheint "Blackbox" als Ausgabegeraet
 (macOS / Windows), kommt Audio sauber an, ob JOEBOX' Ausgang dabei weiter ohne Aussetzer laeuft (Bandbreite,
 RX-FIFO, Interrupt-Last), Verhalten bei abgezogenem Kabel waehrend der Aufnahme.
+
+### Live-Input USB auf einem Pad (2026-10-20)
+
+| Thema | Befund | Beleg | Status |
+|---|---|---|---|
+| JOEBOX Live-Input | insert.c: `ins_set.input` (Off / In 1 / In 2 / In 1+2, Pad-Parameter 0x1C7 `insinput`), insert_tick liest ihn je Pad, add_input addiert den ADC-Bus (Engine + 0x128E0 + 0x1583C) in den eigenen Mix des Pads vor dem Insert; insert_live haelt das Pad ohne Stimme am Rendern | insert.c | gelesen |
+| USB als Quelle | fuenfter Eintrag "USB" (IN_USB, angehaengt), add_input -> usbin_add (Bank 1) -> pk_usbin_add (Bank 2): addiert den Block des Computer-Stroms; Mono-Pad bekommt links | test_jb.py (echter insert_tick / insert_process) | durch Emulation bestaetigt |
+| ein Block fuer alle | pk_usbin_fill erzeugt hoechstens einmal pro Audio-Block (DWT-Zyklen, JOEBOX cpu.c schaltet den Zaehler ein; halber Block 500 000 Zyklen bei 399 MHz): Recorder und Pad bekommen dieselben Samples, sonst nimmt jeder jeden zweiten Block | test_jb.py | durch Emulation bestaetigt |
+| Monitor | Rec Input USB: Monitor wie ein Eingang (am Geraet: Aufnahme lief, Mithoeren fehlte -> korrigiert) | Rueckmeldung, test_jb.py | Aufnahme hardware-verified, Monitor durch Emulation bestaetigt |
+

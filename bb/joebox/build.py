@@ -151,6 +151,20 @@ USBIN_EDITS = [
      "      ac[5] == sum(len(x) for x in parts[ac_i:ac_i + 5]) == 53 and list(ac[7:11]) == [3, 1, 2, 3], ac)"),
     ("test_usbdev.py", "      alts == [(1, 0, 0), (1, 1, 1)] and 49 * 6 * 3 == 882, alts)",
      "      alts == [(1, 0, 0), (1, 1, 1), (2, 0, 0), (2, 1, 1)] and 49 * 6 * 3 == 882, alts)"),
+    # a pad's live input: "USB" as a fifth source (appended: saved values keep their meaning)
+    ("src/insert.h", "enum { IN_OFF, IN_LEFT, IN_RIGHT, IN_STEREO, IN_SOURCES };",
+     "enum { IN_OFF, IN_LEFT, IN_RIGHT, IN_STEREO, IN_USB, IN_SOURCES };   /* IN_USB: portkit */"),
+    ("src/insert.c", 'static const char *const in_names[IN_SOURCES] = {"Off", "In 1", "In 2", "In 1+2"};',
+     'static const char *const in_names[IN_SOURCES] = {"Off", "In 1", "In 2", "In 1+2", "USB"};\n'
+     "void usbin_add(float *l, float *r, int n);       /* portkit pk_main.c: the computer's stream (Rec Input USB's) */"),
+    ("src/insert.c", "static void add_input(const struct ins_set *p, float *l, float *r, int n)\n{\n",
+     "static void add_input(const struct ins_set *p, float *l, float *r, int n)\n{\n"
+     "    if (p->input == IN_USB) {                                /* portkit: from the computer, not the ADC */\n"
+     "        usbin_add(l, r, n);\n        return;\n    }\n"),
+    ("test_insert.py", 'check("registered: Insert (Off, Phaser, Flanger, Gate), Input (Off, In 1, In 2, In 1+2), a Model list per effect",',
+     'check("registered: Insert (Off, Phaser, Flanger, Gate), Input (Off, In 1, In 2, In 1+2, USB: portkit), a Model list per effect",'),
+    ("test_insert.py", '(0x1C7, "Input:", ["Off", "In 1", "In 2", "In 1+2"]),',
+     '(0x1C7, "Input:", ["Off", "In 1", "In 2", "In 1+2", "USB"]),'),
     ("test_usbdev.py", "r = control(struct.pack(\"<BBHHH\", 0x01, 11, 0, 2, 0))\n",
      "r = control(struct.pack(\"<BBHHH\", 0x01, 11, 0, 3, 0))         # portkit: MIDI is interface 3\n"),
 ]

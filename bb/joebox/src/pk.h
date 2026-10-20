@@ -33,7 +33,7 @@
 #define PK_USBIN_L     ((float *)0x38006000u)    /* .. 0x380061ff  one block of it, rate-matched, for the recorder */
 #define PK_USBIN_R     ((float *)0x38006200u)    /* .. 0x380063ff */
 #define PK_USBIN_BUF   0x38006400u               /* .. 0x38006413  a buffer struct around them (as PK_FXSUM_BUF) */
-#define PK_USBIN_RD    0x38006500u               /* .. 0x3800651f  the reader's state (task only, struct usbin_rd) */
+#define PK_USBIN_RD    0x38006500u               /* .. 0x3800653f  the reader's state (task only, struct usbin_rd) */
 
 /* --- WSOLA ---------------------------------------------------------------------------------------------------------- */
 typedef int (*pk_read1_fn)(void *stream, float *dst, int n, int pos, int ch, const uint8_t *pad);
@@ -132,13 +132,18 @@ struct usbin_rd {               /* the reader (task context, bank 2) */
     float frac, ratio, fill;    /* fraction of a frame, read rate (1 = nominal), smoothed fill */
     uint32_t underruns, resyncs;
     float integ;                /* the integral part of the rate (the computer's clock offset; kept over a dropout) */
+    uint32_t made, made_n;      /* cycle counter when PK_USBIN_L / R were last filled, and with how many frames: the
+                                   recorder and a pad's live input share one block of it (filling twice would take
+                                   every other block from the computer) */
 };
-_Static_assert(sizeof(struct usbin_rd) <= 0x20, "usbin_rd runs past PK_USBIN_RD's 32 bytes");
+_Static_assert(sizeof(struct usbin_rd) <= 0x40, "usbin_rd runs past PK_USBIN_RD's 64 bytes");
 #define PK_URMAGIC 0x55524431u  /* "URD1" */
 int pk_usbin_open(void);                 /* bank 2, task: endpoint 3 set up and armed; USBIN_ON */
 void pk_usbin_close(void);               /* bank 2, task */
 void pk_usbin_rx(unsigned bytes);        /* bank 2, interrupt: a packet in the receive FIFO, into the ring */
 void pk_usbin_arm(void);                 /* bank 2, interrupt: endpoint 3 again, for the next frame */
-void pk_usbin_fill(int n);               /* bank 2, task: n rate-matched frames into PK_USBIN_L / R + its struct */
+void pk_usbin_fill(int n);               /* bank 2, task: n rate-matched frames into PK_USBIN_L / R + its struct
+                                            (once per audio block; a second call in the same block reuses it) */
+void pk_usbin_add(float *l, float *r, int n);   /* bank 2, task: the block added into a pad's mix (live input) */
 
 #endif

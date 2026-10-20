@@ -557,8 +557,17 @@ def push(frames):
         frames -= m
 
 
-def rec_block():
+CYC = 0xE0001004                                       # DWT cycle counter: the reader makes one block per audio block
+
+
+def tick(cycles=1_070_000):                           # one audio block of time (128 frames at 399 MHz)
+    e.w32(CYC, e.r32(CYC) + cycles)
+
+
+def rec_block(advance=True):
     """what the recorder's buffer holds after the source step: (silent, L, R)"""
+    if advance:
+        tick()
     e.mu.mem_write(dst, struct.pack("<IIIIBB2x", N, N, dl, dr, 0, 1))
     e.wf(dl, [9.0] * N)
     e.wf(dr, [9.0] * N)
@@ -628,5 +637,60 @@ check(f"USB in: the computer stops -> its last {played} blocks play out, then si
 e.call(SYM["usbin_open"], 0)
 sil5, _, _ = rec_block()
 check("USB in: stream closed -> Rec Input USB records silence", sil5 == 1)
+
+# --- a pad's live input "USB" (JOEBOX insert.c add_input -> bank 1 usbin_add -> bank 2): its own mix gets the stream
+ri = entry(0x1C7)
+inames = [e.cstr(e.r32(ri[3] + 4 * k)) for k in range(ri[4])]
+check("pad Input: Off, In 1, In 2, In 1+2 + USB", inames == ["Off", "In 1", "In 2", "In 1+2", "USB"], inames)
+BLK = 0xC0300000                                        # JOEBOX master.c's boot block (its check word as it leaves it)
+e.w32(0x38800F70, BLK)
+e.w32(0x38800F74, BLK ^ 0x5052534D)
+PROW, PCOL = 2, 1
+set_param(0x1C7, 4, PROW, PCOL)
+for _ in range(16):
+    e.call(SYM["insert_tick"])                          # one pad a call: all sixteen
+pad = engine_pad(PROW, PCOL)
+check("pad Input USB: the pad gets its own mix and renders with no voice sounding",
+      e.call(SYM["insert_on"], pad) == 1 and e.call(SYM["insert_live"], pad) == 1)
+e.call(SYM["usbin_open"], 0)
+e.call(SYM["usbin_open"], 1)
+push(500)
+pb, pl, pr = e.new(0x14), e.new(4 * N), e.new(4 * N)
+
+
+def pad_block(voices=0.1, advance=True, stereo=1):
+    if advance:
+        tick()
+    e.mu.mem_write(pb, struct.pack("<IIIIBB2x", N, N, pl, pr if stereo else 0, 0, stereo))
+    e.wf(pl, [voices] * N)
+    e.wf(pr, [voices] * N)
+    e.call(SYM["insert_process"], pad, pb)
+    return e.rf(pl, N), e.rf(pr, N)
+
+
+l1, r1 = pad_block()
+_, ul, ur = rec_block(advance=False)                    # the recorder in the same audio block
+check("pad Input USB: the computer's stream is ADDED to the pad's voices (0.1 + stream), both channels",
+      max(abs(a - 0.1 - b) for a, b in zip(l1, ul)) < 1e-6 and max(abs(a - 0.1 - b) for a, b in zip(r1, ur)) < 1e-6
+      and max(map(abs, ul)) > 0.3, (l1[:3], ul[:3]))
+l2, _ = pad_block()
+step = abs((l2[0] - 0.1) - (l1[-1] - 0.1))
+check(f"pad and recorder share one block of the stream; the next block goes on from it (step {step:.4f})",
+      step < 2 * math.pi * F0 / SR * AMP * 1.05 and (l2[0] - 0.1) != ul[0], step)
+push(128 * 3)
+ml, _ = pad_block(stereo=0)
+check("a mono pad gets the left channel", max(abs(a - 0.1) for a in ml) > 0.3)
+set_param(0x1C7, 0, PROW, PCOL)
+for _ in range(16):
+    e.call(SYM["insert_tick"])
+push(128)
+lo, _ = pad_block()
+check("pad Input back to Off: nothing is added", max(abs(a - 0.1) for a in lo) < 1e-7)
+set_param(0x1C7, 4, PROW, PCOL)
+for _ in range(16):
+    e.call(SYM["insert_tick"])
+e.call(SYM["usbin_open"], 0)
+lc, _ = pad_block()
+check("pad Input USB with the stream closed: the pad plays its voices only", max(abs(a - 0.1) for a in lc) < 1e-7)
 
 done()

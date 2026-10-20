@@ -1365,10 +1365,18 @@ static float ur_at(const int32_t *ring, uint32_t frame, int ch)
     return (float)ring[(frame % USBIN_RING) * 2u + (uint32_t)ch] * (1.0f / 8388608.0f);
 }
 
+#define CYCCNT (*(volatile uint32_t *)0xe0001004u)    /* JOEBOX's cpu.c runs it (399 MHz): one block = ~1.07 M */
+#define HALF_BLOCK 500000u
+
 void pk_usbin_fill(int n)
 {
     n = n > 0 && n <= 128 ? n : 128;
     struct usbin_rd *r = RD;
+    uint32_t now = CYCCNT;
+    if (r->magic == PK_URMAGIC && r->made_n == (uint32_t)n && now - r->made < HALF_BLOCK)
+        return;                                         /* this block's already made (recorder and pad share it) */
+    r->made = now;
+    r->made_n = (uint32_t)n;
     volatile struct usbin *u = PK_UI;
     const int32_t *ring = PK_USBIN_RING;
     float *L = PK_USBIN_L, *R = PK_USBIN_R;
@@ -1474,4 +1482,21 @@ void pk_ssl_run(float *l, float *r, int n)
     int set[6];
     pk_settings(ids, 6, set);
     ssl_run(l, r, n, set);
+}
+
+/* a pad's live input "USB" (JOEBOX insert.c add_input, via bank 1's usbin_add): this block of the computer's stream
+   added into the pad's own mix; a mono pad gets the left channel (as JOEBOX does for In 1+2) */
+void pk_usbin_add(float *l, float *r, int n)
+{
+    pk_usbin_fill(n);
+    const uint32_t *sb = (const uint32_t *)PK_USBIN_BUF;
+    if (((const uint8_t *)sb)[16])
+        return;                                         /* silent */
+    int m = (int)sb[1] < n ? (int)sb[1] : n;
+    const float *a = PK_USBIN_L, *b = PK_USBIN_R;
+    for (int i = 0; i < m; i++) {
+        l[i] += a[i];
+        if (r)
+            r[i] += b[i];
+    }
 }

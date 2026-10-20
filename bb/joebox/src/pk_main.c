@@ -569,6 +569,12 @@ void usbin_rx(unsigned bytes)                           /* interrupt: endpoint 3
         (void)*(volatile uint32_t *)0x40041000u;
 }
 
+void usbin_add(float *l, float *r, int n)               /* JOEBOX insert.c: a pad's live input set to USB */
+{
+    if (PK_UI->on == USBIN_ON)
+        pk_usbin_add(l, r, n);
+}
+
 void usbin_done(void)                                   /* interrupt: endpoint 3's transfer finished, or one missed */
 {
     if (PK_UI->on == USBIN_ON)
