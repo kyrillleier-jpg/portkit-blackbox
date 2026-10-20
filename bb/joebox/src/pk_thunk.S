@@ -167,7 +167,9 @@ pk_clip_entry_stock:
  *   3 (Resam): on to the stock tap 0x0806277e (copies the main mix in, then continues at 0x08062126 itself)
  *   4 (FX):    rec_fx_copy(r8), back to 0x08062126 (through the nop)
  *   5 (USB):   rec_usb_copy(r8), the same way
- * 0x08062660 `cmp r3, #3; beq 0x0806266c` -> bl rec_mon_thunk: Resam, FX or USB skip the input's monitor path
+ * 0x08062660 `cmp r3, #3; beq 0x0806266c` -> bl rec_mon_thunk: Resam or FX skip the monitor (already in the main
+ *   mix: it would double / feed back); USB is monitored like an input (the monitor copies the record buffer r8, which
+ *   rec_usb_copy filled, 0x080627d6: stereo unless Rec Input is Left / Right)
  * 0x0809b26a `cmp r0, #3; it ne; cmpne r0, #0` (record start: stereo for L+R / Resam) -> bl rec_stereo_thunk; nop,
  *   FX and USB too; the `ite eq` after reads the flags */
     .global rec_src_thunk
@@ -202,8 +204,6 @@ rec_mon_thunk:
     cmp     r3, #3
     it      ne
     cmpne   r3, #4
-    it      ne
-    cmpne   r3, #5
     it      eq
     addeq   lr, lr, #8            /* was beq 0x0806266c: lr = 0x08062665 -> 0x0806266d */
     bx      lr

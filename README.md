@@ -56,8 +56,8 @@ start the transport with PLAY, then press REC (REC only works while the transpor
 **Recording from the computer:** connect the computer to the power jack, as for JOEBOX's USB audio. The Blackbox now
 also shows up as an *output* device on the computer ("Blackbox", 2 channels, 48 kHz); play into it. On the record
 screen set Rec Input to **USB** and record as usual. The Blackbox follows the computer's clock (it matches the rate
-by itself), so nothing else has to be set. While nothing comes from the computer, USB records silence. The input
-monitor is not used for this source. Computers that saw an older build may need the device unplugged and plugged in
+by itself), so nothing else has to be set. While nothing comes from the computer, USB records silence. With the
+record screen's monitor on you hear it through the Blackbox (about 8 ms behind the computer). Computers that saw an older build may need the device unplugged and plugged in
 again to notice the new output.
 
 ## Good to know

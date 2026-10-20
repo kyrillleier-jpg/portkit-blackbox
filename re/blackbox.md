@@ -186,9 +186,10 @@ nur MIDI, kein Audio-Klassentreiber (nur Strings geprueft, nicht verifiziert).
 | Empfang | RX-Status ep 3 kind 2 -> usbin_rx (Bank 1) -> pk_usbin_rx (Bank 2, nur Integer, FPU-frei geprueft) in den Ring SRAM4 0x38004000 (1024 x L/R); kind 3 bzw. GINTSTS bit 21 (incomplete iso OUT) -> neu scharf fuer die Paritaet des naechsten Frames | test_jb.py (FIFO per Lese-Hook) | durch Emulation bestaetigt |
 | Oeffnen | SET_INTERFACE 2 im Task; b2_live() nur dort (der erste Aufruf kann Bank 2 scannen: nicht im Interrupt); Zustand SRAM4 0x38003F00 mit Magic "USB1", core_setup setzt ihn jeden Boot zurueck | test_jb.py | durch Emulation bestaetigt |
 | Leser | 384 Frames (8 ms) Vorlauf, PI-Regelung der Leserate auf den geglaetteten Fuellstand (Kp 5e-6, Ki 2e-9, im Modell abgestimmt), kubische Hermite-Interpolation; Start erst nach 384 frischen Frames, Abriss -> Stille, nie alter Ringinhalt | test_jb.py: +-0,1 % Taktabweichung 40 s ohne Luecke/Sprung, Puffer zurueck auf 384 | durch Emulation bestaetigt |
-| Aufnahme | Rec Input 5 = USB (Liste 6 Eintraege, nur mit pk_usbin; braucht pk_fxrec, damit die Indizes stabil bleiben); rec_src_thunk -> rec_usb_copy -> fw_buf_copy aus PK_USBIN_BUF; stereo; Monitor uebersprungen | test_jb.py | durch Emulation bestaetigt |
+| Aufnahme | Rec Input 5 = USB (Liste 6 Eintraege, nur mit pk_usbin; braucht pk_fxrec, damit die Indizes stabil bleiben); rec_src_thunk -> rec_usb_copy -> fw_buf_copy aus PK_USBIN_BUF; stereo; Monitor wie ein Eingang (0x080627d6 kopiert den Record-Puffer r8 auf den Monitor-Ausgang, stereo ausser bei Left / Right; Resam / FX bleiben ohne Monitor) | test_jb.py | durch Emulation bestaetigt |
 | Bank 1 | ohne Platzarbeit 184 Byte zu viel: Parametertabelle gepackt (Label+XML ein String, dB in ganzen dB, Namen als Index), Settings-Lesen von master_dist / fx3_master / pk_ssl nach Bank 2; danach 184 Byte frei | Build | - |
 
-Offen: am Geraet nicht getestet (Simulation kann kein USB). Zu pruefen: erscheint "Blackbox" als Ausgabegeraet
+Am Geraet (2026-10-20): funktioniert grundlegend (Rueckmeldung); Mithoeren fehlte, weil rec_mon_thunk USB wie Resam / FX uebersprang - korrigiert, am Geraet noch nicht gehoert.
+Offen: weitere Punkte am Geraet. Zu pruefen: erscheint "Blackbox" als Ausgabegeraet
 (macOS / Windows), kommt Audio sauber an, ob JOEBOX' Ausgang dabei weiter ohne Aussetzer laeuft (Bandbreite,
 RX-FIFO, Interrupt-Last), Verhalten bei abgezogenem Kabel waehrend der Aufnahme.

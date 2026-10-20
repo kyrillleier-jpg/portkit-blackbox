@@ -445,7 +445,8 @@ for v in range(6):
     skipped.clear()
     e.call(SYM["rec_mon_thunk"], 0, 0, 0, v)
     mon.append(bool(skipped))
-check("input monitor skipped (return + 8) for Resam, FX and USB only", mon == [False, False, False, True, True, True], mon)
+check("monitor skipped (return + 8) for Resam and FX only; USB is monitored like an input",
+      mon == [False, False, False, True, True, False], mon)
 taps = []
 e.stub(0x0806277E, lambda uc: taps.append("stock"))
 dst = e.new(0x14)
