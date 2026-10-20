@@ -4,7 +4,7 @@ Real firmware and JOEBOX code runs for: the whole parameter registration 0x0808c
 global settings init 0x0809481c and the pad record init by type 0x08094a1c (JOEBOX's capacities), store get / set,
 the stream read 0x08063634 on an in-memory stream, the stock plate init 0x08074d1c and core 0x08074f50 (bank 2 calls
 it), the buffer accessors, the send curve. b2_live (JOEBOX cpu.c: is bank 2 this build's payload) is stubbed: true,
-and false for the bypass checks. Distortion output compared with the Bitbox micro's master_dist (tests/render_master.py).
+and false for the bypass checks. Distortion and SSL output compared with the bitbox micro's (PORTKIT_MICRO, see below).
 
   python3 -I tests/test_jb.py        (after python3 bb/joebox/build.py)
 """
@@ -281,12 +281,24 @@ def dist_run(left, right, settings):
 
 sig_l = [0.5 * math.sin(2 * math.pi * 220 * k / 48000) + 0.2 * math.sin(2 * math.pi * 3100 * k / 48000) for k in range(N * 16)]
 sig_r = [0.4 * math.sin(2 * math.pi * 330 * k / 48000 + 1.0) for k in range(N * 16)]
-_src = open(os.path.join(HERE, "render_master.py")).read()
-ns = {"__file__": os.path.join(HERE, "render_master.py"), "__name__": "render_master"}
-exec(compile(_src, "render_master.py", "exec"), ns)
+# Reference: the bitbox micro's DSP, run in its patched image (portkit-micro's tests/render_master.py, which needs
+# that project's firmware/MICRO.BIN and build). Set PORTKIT_MICRO=<portkit-micro checkout>; without it the
+# comparisons with the micro are skipped and only the Blackbox side is checked.
+_micro = os.environ.get("PORTKIT_MICRO")
+ns = None
+if _micro:
+    _rm = os.path.join(_micro, "tests", "render_master.py")
+    ns = {"__file__": _rm, "__name__": "render_master"}
+    exec(compile(open(_rm).read(), _rm, "exec"), ns)
+else:
+    print("skip comparisons with the bitbox micro's DSP (set PORTKIT_MICRO to a built portkit-micro checkout)")
 for typ, name in ((1, "Soft"), (2, "Hard"), (3, "Fold"), (4, "Tube")):
     s = dict(dtype=typ, drive=18000, tone=1000, mix=700, level=-6000)
     bl_, br_ = dist_run(sig_l, sig_r, s)
+    check(f"Distortion {name} (bank 2): output finite and changed", all(math.isfinite(x) for x in bl_ + br_)
+          and bl_ != sig_l)
+    if not ns:
+        continue
     m = ns["Master"]()
     ms = dict(ns["NEUTRAL"])
     ms.update(s)
@@ -387,6 +399,10 @@ for ratio, attack, rel, mixv in ((0, 5, 4, 1000), (2, 0, 0, 1000), (1, 3, 4, 400
         e.wf(SR, drums[b:b + N])
         e.call(SYM["pk_ssl"], SL, SR, N)
         out += e.rf(SL, N)
+    check(f"SSL ratio {ratio} attack {attack} release {rel} mix {mixv}: output finite",
+          all(math.isfinite(x) for x in out))
+    if not ns:
+        continue
     m = ns["Master"]()
     ms = dict(ns["NEUTRAL"])
     ms.update(ctype=1, thresh=-20000, sratio=ratio, sattack=attack, srelease=rel, gain=3000, cmix=mixv)

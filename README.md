@@ -73,6 +73,9 @@ them are reported, not changed.
 .venv/bin/python -I tests/test_jb.py                # full test (all groups)
 ```
 
+With `PORTKIT_MICRO=<built portkit-micro checkout>`, `test_jb.py` also compares the distortion and SSL output
+with the bitbox micro's (bit-identical); without it those comparisons are skipped.
+
 Output: `out/bb/jb/release/BLACKBOX.bin` + `BBEXTRA.BIN` + `build.json` (SHA-256 of both). The build exports the
 pinned JOEBOX commit (66329ad), runs JOEBOX's own build and patcher, then applies ours with checks: expected bytes at
 every site, all changes inside registered ranges, every call and pointer lands on a known symbol, image ends before
