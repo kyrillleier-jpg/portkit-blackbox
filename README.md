@@ -57,6 +57,17 @@ It sets the nearest stock entry (1/32 → 1/16, SSL → Glue, FX → Resam, Fide
 else in the files. Also available in the dashboard. Note: JOEBOX's Note Conditions reorder their list; presets using
 them are reported, not changed.
 
+## Patch in the browser
+
+`docs/index.html` is a one-page patcher: open it (or the GitHub Pages site of this repo), drop your stock
+`BLACKBOX.bin` 3.1.9, download the result. Everything runs in the browser, nothing is uploaded. The page holds only this
+project's bytes (no 1010music firmware), checks the stock file's SHA-256 before and the result's SHA-256 after, so it
+can only produce the tested build. The patch is also in `docs/patches/*.json` (blackbox-mod's format; its `apply.py`
+applies it too).
+
+Regenerate after a change: `python3 -I tools/make_web.py` (needs a clean commit; builds, runs the tests, checks that no
+32-byte run of the stock image ends up in the patch, then writes `docs/`).
+
 ## Requirements
 
 - macOS or Linux, Python 3, `arm-none-eabi-gcc`, `git`

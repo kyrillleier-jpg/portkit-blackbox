@@ -1,7 +1,7 @@
 firmware/
 out/
 repos/
-.venv/
+.venv
 *.bin
 *.BIN
 *.zip

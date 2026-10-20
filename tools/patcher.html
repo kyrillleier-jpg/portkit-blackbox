@@ -1,0 +1,254 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>__TITLE__</title>
+<style>
+:root {
+  --bg: #f6f5f2; --panel: #ffffff; --ink: #1d1d1f; --muted: #6b6b70; --line: #e3e1dc; --chip: #efede8;
+  --accent: #d6336c; --accent-ink: #ffffff; --ok: #1f8a4c; --bad: #c0392b; --warn-bg: #fff6e0; --warn-ink: #7a5600;
+  --drop: #fbfaf7;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #141414; --panel: #1e1e1f; --ink: #ececec; --muted: #9b9ba1; --line: #2e2e30; --chip: #2a2a2c;
+    --accent: #ff5fa2; --accent-ink: #141414; --ok: #4cc27c; --bad: #ff6b5e; --warn-bg: #2b2414; --warn-ink: #e8c46a;
+    --drop: #19191a;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #141414; --panel: #1e1e1f; --ink: #ececec; --muted: #9b9ba1; --line: #2e2e30; --chip: #2a2a2c;
+  --accent: #ff5fa2; --accent-ink: #141414; --ok: #4cc27c; --bad: #ff6b5e; --warn-bg: #2b2414; --warn-ink: #e8c46a;
+  --drop: #19191a;
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--ink);
+  font: 16px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif; }
+main { max-width: 760px; margin: 0 auto; padding: 40px 24px 80px; }
+h1 { font-size: 30px; margin: 0; letter-spacing: -0.015em; }
+h1 span { color: var(--accent); }
+.lead { color: var(--muted); margin: 6px 0 22px; }
+.warn { background: var(--warn-bg); color: var(--warn-ink); border-radius: 10px; padding: 12px 14px; font-size: 14px; }
+.step { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 20px; margin: 16px 0; }
+.step h2 { font-size: 17px; margin: 0 0 12px; display: flex; gap: 10px; align-items: center; }
+.num { width: 26px; height: 26px; border-radius: 50%; background: var(--chip); color: var(--muted); font-size: 14px;
+  display: inline-flex; align-items: center; justify-content: center; font-weight: 600; flex: none; }
+.step.done .num { background: var(--ok); color: #fff; font-size: 0; }
+.step.done .num::before { content: "\2713"; font-size: 14px; }
+.step.off { opacity: .55; }
+.variants { display: grid; gap: 8px; }
+.variant { display: flex; gap: 12px; align-items: flex-start; border: 1px solid var(--line); border-radius: 10px;
+  padding: 12px; cursor: pointer; }
+.variant input { margin-top: 4px; accent-color: var(--accent); }
+.variant b { display: block; }
+.variant small { color: var(--muted); }
+.drop { display: block; border: 2px dashed var(--line); border-radius: 12px; padding: 28px 16px; text-align: center; background: var(--drop);
+  cursor: pointer; transition: border-color .15s; }
+.drop:hover, .drop.over { border-color: var(--accent); }
+.drop input { display: none; }
+.drop .big { font-weight: 600; }
+.drop .small { color: var(--muted); font-size: 14px; }
+.status { margin-top: 12px; font-size: 14px; }
+.ok { color: var(--ok); } .bad { color: var(--bad); }
+.hash { font-family: ui-monospace, Menlo, monospace; font-size: 12px; color: var(--muted); word-break: break-all; }
+button { font: inherit; border: 1px solid var(--accent); background: var(--accent); color: var(--accent-ink);
+  padding: 9px 16px; border-radius: 9px; cursor: pointer; font-weight: 600; margin: 4px 8px 4px 0; }
+button.ghost { background: transparent; color: var(--ink); border-color: var(--line); font-weight: 500; }
+button:disabled { opacity: .45; cursor: default; }
+ol { padding-left: 20px; margin: 8px 0 0; }
+ol li { margin: 4px 0; }
+code { background: var(--chip); padding: 1px 5px; border-radius: 5px; font-size: 14px; }
+details { margin-top: 10px; }
+summary { cursor: pointer; color: var(--muted); font-size: 14px; }
+table { width: 100%; border-collapse: collapse; font-size: 14px; margin-top: 8px; }
+td { padding: 6px 4px; border-top: 1px solid var(--line); vertical-align: top; }
+td:first-child { font-weight: 600; width: 40%; }
+footer { color: var(--muted); font-size: 13px; margin-top: 28px; }
+footer a { color: inherit; }
+@media (max-width: 560px) { main { padding: 24px 16px 60px; } h1 { font-size: 24px; } td:first-child { width: 45%; } }
+</style>
+</head>
+<body>
+<main>
+  <h1>__H1__</h1>
+  <p class="lead" id="lead"></p>
+  <div class="warn">Unofficial community firmware, not affiliated with or supported by 1010music. Use at your own risk;
+    it may affect your warranty. Keep your stock firmware file so you can go back.</div>
+
+  <section class="step" id="s1">
+    <h2><span class="num">1</span>Choose the build</h2>
+    <div class="variants" id="variants"></div>
+  </section>
+
+  <section class="step" id="s2">
+    <h2><span class="num">2</span>Your stock firmware</h2>
+    <label class="drop" id="drop">
+      <input type="file" id="file">
+      <div class="big">Drop <span id="stockname"></span> here or click to choose</div>
+      <div class="small" id="stockhint"></div>
+    </label>
+    <div class="status" id="status"></div>
+  </section>
+
+  <section class="step off" id="s3">
+    <h2><span class="num">3</span>Download and install</h2>
+    <div id="downloads"><button disabled>Waiting for the stock file</button></div>
+    <ol id="install"></ol>
+  </section>
+
+  <section class="step">
+    <h2>What is in this build</h2>
+    <table id="features"></table>
+    <details><summary>How this page works</summary>
+      <p style="font-size:14px">The page holds only the bytes this project adds or changes, never 1010music's
+        firmware. It checks your file's SHA-256 against the stock release, applies the changes in your browser,
+        and checks the result's SHA-256 against the tested build before offering it. Nothing is uploaded.
+        The same patch file works with blackbox-mod's <code>apply.py</code>.</p>
+    </details>
+  </section>
+
+  <footer id="footer"></footer>
+</main>
+<script>
+const CONFIG = __CONFIG__;
+const PATCHES = __PATCHES__;
+
+const $ = s => document.querySelector(s);
+const esc = s => String(s).replace(/[&<>"]/g, c => ({"&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;"}[c]));
+let current = 0, stock = null, result = null;
+
+function hex2bytes(h) {
+  const out = new Uint8Array(h.length / 2);
+  for (let i = 0; i < out.length; i++) out[i] = parseInt(h.substr(i * 2, 2), 16);
+  return out;
+}
+
+// SHA-256: Web Crypto where available (https, localhost, most browsers on file://), otherwise this fallback
+function sha256js(data) {
+  const K = new Uint32Array([0x428a2f98,0x71374491,0xb5c0fbcf,0xe9b5dba5,0x3956c25b,0x59f111f1,0x923f82a4,0xab1c5ed5,
+    0xd807aa98,0x12835b01,0x243185be,0x550c7dc3,0x72be5d74,0x80deb1fe,0x9bdc06a7,0xc19bf174,0xe49b69c1,0xefbe4786,
+    0x0fc19dc6,0x240ca1cc,0x2de92c6f,0x4a7484aa,0x5cb0a9dc,0x76f988da,0x983e5152,0xa831c66d,0xb00327c8,0xbf597fc7,
+    0xc6e00bf3,0xd5a79147,0x06ca6351,0x14292967,0x27b70a85,0x2e1b2138,0x4d2c6dfc,0x53380d13,0x650a7354,0x766a0abb,
+    0x81c2c92e,0x92722c85,0xa2bfe8a1,0xa81a664b,0xc24b8b70,0xc76c51a3,0xd192e819,0xd6990624,0xf40e3585,0x106aa070,
+    0x19a4c116,0x1e376c08,0x2748774c,0x34b0bcb5,0x391c0cb3,0x4ed8aa4a,0x5b9cca4f,0x682e6ff3,0x748f82ee,0x78a5636f,
+    0x84c87814,0x8cc70208,0x90befffa,0xa4506ceb,0xbef9a3f7,0xc67178f2]);
+  const H = new Uint32Array([0x6a09e667,0xbb67ae85,0x3c6ef372,0xa54ff53a,0x510e527f,0x9b05688c,0x1f83d9ab,0x5be0cd19]);
+  const n = data.length, total = Math.ceil((n + 9) / 64) * 64, buf = new Uint8Array(total);
+  buf.set(data); buf[n] = 0x80;
+  const dv = new DataView(buf.buffer);
+  dv.setUint32(total - 8, Math.floor(n / 0x20000000)); dv.setUint32(total - 4, (n * 8) >>> 0);
+  const W = new Uint32Array(64), r = (x, k) => (x >>> k) | (x << (32 - k));
+  for (let o = 0; o < total; o += 64) {
+    for (let i = 0; i < 16; i++) W[i] = dv.getUint32(o + i * 4);
+    for (let i = 16; i < 64; i++) {
+      const s0 = r(W[i-15], 7) ^ r(W[i-15], 18) ^ (W[i-15] >>> 3), s1 = r(W[i-2], 17) ^ r(W[i-2], 19) ^ (W[i-2] >>> 10);
+      W[i] = (W[i-16] + s0 + W[i-7] + s1) >>> 0;
+    }
+    let [a, b, c, d, e, f, g, h] = H;
+    for (let i = 0; i < 64; i++) {
+      const t1 = (h + (r(e, 6) ^ r(e, 11) ^ r(e, 25)) + ((e & f) ^ (~e & g)) + K[i] + W[i]) >>> 0;
+      const t2 = ((r(a, 2) ^ r(a, 13) ^ r(a, 22)) + ((a & b) ^ (a & c) ^ (b & c))) >>> 0;
+      h = g; g = f; f = e; e = (d + t1) >>> 0; d = c; c = b; b = a; a = (t1 + t2) >>> 0;
+    }
+    H[0] += a; H[1] += b; H[2] += c; H[3] += d; H[4] += e; H[5] += f; H[6] += g; H[7] += h;
+  }
+  return [...H].map(x => x.toString(16).padStart(8, "0")).join("");
+}
+async function sha256(data) {
+  try {
+    if (crypto && crypto.subtle) {
+      const d = await crypto.subtle.digest("SHA-256", data);
+      return [...new Uint8Array(d)].map(b => b.toString(16).padStart(2, "0")).join("");
+    }
+  } catch (e) {}
+  return sha256js(data);
+}
+
+function renderVariants() {
+  $("#variants").innerHTML = PATCHES.map((p, i) => `<label class="variant">
+    <input type="radio" name="v" value="${i}" ${i === current ? "checked" : ""}>
+    <span><b>${esc(p.title || p.version)}</b><small>${esc(p.summary || "")}</small></span></label>`).join("");
+  $("#s1").hidden = PATCHES.length < 2;
+  if (PATCHES.length < 2) document.querySelectorAll(".num").forEach((n, i) => { if (i < 3 && i > 0) n.textContent = i; });
+  const p = PATCHES[current];
+  $("#features").innerHTML = (p.features || []).map(f => `<tr><td>${esc(f[0])}</td><td>${esc(f[1])}</td></tr>`).join("");
+}
+$("#variants").addEventListener("change", e => { current = +e.target.value; renderVariants(); if (stock) build(); });
+
+async function load(file) {
+  const st = $("#status");
+  st.innerHTML = "Checking …";
+  const data = new Uint8Array(await file.arrayBuffer());
+  const p = PATCHES[current];
+  const h = await sha256(data);
+  if (h !== p.stock_sha256) {
+    stock = null;
+    $("#s2").classList.remove("done");
+    st.innerHTML = `<span class="bad"><b>This is not the stock ${esc(CONFIG.stockName)} ${esc(p.stock_version)}.</b></span>
+      ${data.length !== p.stock_size ? `Size ${data.length.toLocaleString()} bytes, expected ${p.stock_size.toLocaleString()}.` : "Same size, different content (already patched?)."}
+      ${CONFIG.stockSource}<div class="hash">SHA-256 ${h}</div>`;
+    resetDownloads();
+    return;
+  }
+  stock = data;
+  $("#s2").classList.add("done");
+  st.innerHTML = `<span class="ok"><b>Stock ${esc(CONFIG.stockName)} ${esc(p.stock_version)} recognised.</b></span>
+    <div class="hash">${esc(file.name)} · ${data.length.toLocaleString()} bytes · SHA-256 ${h}</div>`;
+  build();
+}
+
+async function build() {
+  const p = PATCHES[current];
+  const out = new Uint8Array(p.output_size);
+  out.set(stock);
+  for (const w of p.writes) out.set(hex2bytes(w.bytes), w.offset);
+  out.set(hex2bytes(p.append), p.stock_size);
+  if (await sha256(out) !== p.output_sha256) {
+    $("#status").innerHTML += `<p class="bad"><b>The patched result failed its check. Nothing to download.</b></p>`;
+    resetDownloads();
+    return;
+  }
+  const files = [[CONFIG.outName, out]];
+  for (const x of p.extra || []) {
+    const b = hex2bytes(x.bytes);
+    if (b.length !== x.size || await sha256(b) !== x.sha256) { resetDownloads(); return; }
+    files.push([x.name, b]);
+  }
+  result = files;
+  $("#s3").classList.remove("off");
+  $("#s3").classList.add("done");
+  $("#downloads").innerHTML = files.map((f, i) =>
+    `<button data-i="${i}">Download ${esc(f[0])}</button>`).join("") +
+    `<div class="hash">${esc(p.version)} · ${esc(CONFIG.outName)} SHA-256 ${p.output_sha256}</div>`;
+}
+function resetDownloads() {
+  result = null;
+  $("#s3").classList.add("off"); $("#s3").classList.remove("done");
+  $("#downloads").innerHTML = `<button disabled>Waiting for the stock file</button>`;
+}
+$("#downloads").addEventListener("click", e => {
+  const i = e.target.dataset.i;
+  if (i === undefined || !result) return;
+  const [name, bytes] = result[+i];
+  const url = URL.createObjectURL(new Blob([bytes], {type: "application/octet-stream"}));
+  const a = document.createElement("a");
+  a.href = url; a.download = name; document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 2000);
+});
+
+const drop = $("#drop");
+$("#file").addEventListener("change", e => e.target.files[0] && load(e.target.files[0]));
+["dragenter", "dragover"].forEach(ev => drop.addEventListener(ev, e => { e.preventDefault(); drop.classList.add("over"); }));
+["dragleave", "drop"].forEach(ev => drop.addEventListener(ev, e => { e.preventDefault(); drop.classList.remove("over"); }));
+drop.addEventListener("drop", e => e.dataTransfer.files[0] && load(e.dataTransfer.files[0]));
+
+$("#lead").innerHTML = CONFIG.lead;
+$("#stockname").textContent = CONFIG.stockName;
+$("#stockhint").innerHTML = CONFIG.stockHint;
+$("#install").innerHTML = CONFIG.install.map(s => `<li>${s}</li>`).join("");
+$("#footer").innerHTML = CONFIG.footer;
+renderVariants();
+</script>
+</body>
+</html>
