@@ -4,6 +4,7 @@
  * bank 1, settings and readers come in through pk.h's structures. Stock firmware calls (fixed addresses) are fine.
  */
 #include "pk.h"
+#include "pk_ids.h"                                  /* bb/joebox/ids.py */
 
 #pragma GCC optimize("O2", "no-tree-loop-distribute-patterns")
 
@@ -142,7 +143,7 @@ static float run1(struct dch *c, int type, float in, float drive, float tone_a, 
 }
 
 
-void pk_dist_bus(uint8_t *bus0, const int *set)
+static void dist_bus(uint8_t *bus0, const int *set)
 {
     struct dist *d = DS;
     int type = set[0], n = fw_buf_frames(bus0);
@@ -1078,7 +1079,7 @@ static void fx_sum_add(const uint8_t *bus, int n, int first)
     }
 }
 
-void pk_fx_block(uint8_t *bus0, uint8_t *bus_fx2, const int *set)
+static void fx_block(uint8_t *bus0, uint8_t *bus_fx2, const int *set)
 {
     int n = fw_buf_frames(bus0);
     n = n > 0 && n <= MAXN ? n : MAXN;
@@ -1218,7 +1219,7 @@ static int pick(int v, int count, int def)
     return v >= 0 && v < count ? v : def;
 }
 
-void pk_ssl_run(float *l, float *r, int n, const int *set)
+static void ssl_run(float *l, float *r, int n, const int *set)
 {
     volatile struct sslst *s = SST;
     if (s->magic != SMAGIC) {
@@ -1279,4 +1280,198 @@ void pk_ssl_run(float *l, float *r, int n, const int *set)
             if (r)
                 r[k] = dr[k] + mix * (r[k] - dr[k]);
         }
+}
+
+/* ============================================ USB audio from the computer (Rec Input: USB) ========================== */
+/* JOEBOX's usbdev.c (OTG_HS, device on the power jack) with build.py's USBIN_EDITS: endpoint 3, isochronous OUT,
+   adaptive (the computer's clock), 2 x 24 bit at 48 kHz, 48 frames a packet (up to 49). The interrupt side is integer
+   only (the USB interrupt must not touch the FPU, usbdev.c); the reader runs in the audio task. */
+#define OTG(o)    (*(volatile uint32_t *)(0x40040000u + (o)))
+#define DSTS_     OTG(0x808)
+#define DOEPCTL3  OTG(0xb60)
+#define DOEPTSIZ3 OTG(0xb70)
+#define RXFIFO    OTG(0x1000)
+#define EP_ENA    (1u << 31)
+#define EP_DIS    (1u << 30)
+#define EP_ODD    (1u << 29)
+#define EP_EVEN   (1u << 28)
+#define EP_SNAK   (1u << 27)
+#define EP_CNAK   (1u << 26)
+#define EP_ACTIVE (1u << 15)
+#define EP_ISO    (1u << 18)
+#define RD ((struct usbin_rd *)PK_USBIN_RD)
+#define UR_TARGET 384u          /* frames kept between the computer and the recorder: 8 ms */
+
+void pk_usbin_arm(void)
+{
+    DOEPTSIZ3 = (1u << 19) | USBIN_MAX;                 /* one packet, up to 294 bytes */
+    DOEPCTL3 |= EP_ENA | EP_CNAK | (((DSTS_ >> 8) + 1u) & 1u ? EP_ODD : EP_EVEN);   /* for the next frame */
+}
+
+int pk_usbin_open(void)
+{
+    volatile struct usbin *u = PK_UI;
+    u->write = 0;
+    u->packets = 0;
+    u->bad = 0;
+    RD->magic = 0;                                      /* the reader starts over once enough has come in */
+    RD->pos = 0;
+    RD->integ = 0.0f;
+    DOEPCTL3 = USBIN_MAX | EP_ACTIVE | EP_ISO;
+    pk_usbin_arm();
+    return 1;
+}
+
+void pk_usbin_close(void)
+{
+    if (DOEPCTL3 & EP_ENA)
+        DOEPCTL3 |= EP_SNAK | EP_DIS;
+    DOEPCTL3 &= ~EP_ACTIVE;
+    RD->magic = 0;
+}
+
+void pk_usbin_rx(unsigned bytes)
+{
+    volatile struct usbin *u = PK_UI;
+    uint8_t b[USBIN_MAX + 4];
+    unsigned words = (bytes + 3u) / 4u;
+    for (unsigned i = 0; i < words; i++) {              /* the whole packet comes out of the FIFO, always */
+        uint32_t w = RXFIFO;
+        if (i * 4u + 3u < sizeof b) {
+            b[i * 4u] = (uint8_t)w;
+            b[i * 4u + 1u] = (uint8_t)(w >> 8);
+            b[i * 4u + 2u] = (uint8_t)(w >> 16);
+            b[i * 4u + 3u] = (uint8_t)(w >> 24);
+        }
+    }
+    if (bytes > USBIN_MAX || bytes % 6u) {
+        u->bad++;
+        return;
+    }
+    uint32_t wr = u->write, frames = bytes / 6u;
+    int32_t *ring = PK_USBIN_RING;
+    for (uint32_t f = 0; f < frames; f++) {
+        const uint8_t *p = b + f * 6u;
+        int32_t *dst = ring + ((wr + f) % USBIN_RING) * 2u;
+        dst[0] = (int32_t)((uint32_t)p[0] << 8 | (uint32_t)p[1] << 16 | (uint32_t)p[2] << 24) >> 8;
+        dst[1] = (int32_t)((uint32_t)p[3] << 8 | (uint32_t)p[4] << 16 | (uint32_t)p[5] << 24) >> 8;
+    }
+    u->write = wr + frames;
+    u->packets++;
+}
+
+static float ur_at(const int32_t *ring, uint32_t frame, int ch)
+{
+    return (float)ring[(frame % USBIN_RING) * 2u + (uint32_t)ch] * (1.0f / 8388608.0f);
+}
+
+void pk_usbin_fill(int n)
+{
+    n = n > 0 && n <= 128 ? n : 128;
+    struct usbin_rd *r = RD;
+    volatile struct usbin *u = PK_UI;
+    const int32_t *ring = PK_USBIN_RING;
+    float *L = PK_USBIN_L, *R = PK_USBIN_R;
+    uint32_t *sb = (uint32_t *)PK_USBIN_BUF;
+    uint32_t w = u->write;
+    sb[0] = 128;
+    sb[1] = (uint32_t)n;
+    sb[2] = (uint32_t)L;
+    sb[3] = (uint32_t)R;
+    sb[4] = 0x100;                                      /* silent 0, stereo 1 */
+    if (r->magic != PK_URMAGIC) {
+        /* start (again) only on fresh data: UR_TARGET frames since the stream opened or last ran dry */
+        if (w - r->pos < UR_TARGET || w - r->pos > 0x80000000u) {
+            sb[4] = 0x101;
+            return;
+        }
+        r->magic = PK_URMAGIC;
+        r->pos = w - UR_TARGET;
+        r->frac = 0.0f;
+        r->ratio = 1.0f;
+        r->fill = (float)UR_TARGET;
+        r->resyncs++;
+    }
+    uint32_t avail = w - r->pos;
+    if (avail > USBIN_RING - 8u) {                      /* left behind (nobody read for a while): catch up */
+        r->pos = w - UR_TARGET;
+        r->frac = 0.0f;
+        r->fill = (float)UR_TARGET;
+        r->resyncs++;
+        avail = UR_TARGET;
+    }
+    if (avail < (uint32_t)n + 8u) {                     /* the computer stopped (or fell far behind): silence */
+        r->magic = 0;
+        r->pos = w;                                     /* fresh data counts from here */
+        r->underruns++;
+        sb[4] = 0x101;
+        return;
+    }
+    /* PI control of the read rate on the smoothed fill: P alone leaves +-200 frames at 0.1 % clock offset, the
+       integral brings it back to UR_TARGET (tuned in a model of this loop; tests/test_jb.py runs +-0.1 %) */
+    r->fill += 0.004f * ((float)avail - r->fill);       /* ~0.7 s of blocks */
+    float e = r->fill - (float)UR_TARGET, in = r->integ + 2e-9f * e;
+    in = in < -0.003f ? -0.003f : in > 0.003f ? 0.003f : in;
+    r->integ = in;
+    float ratio = 1.0f + 5e-6f * e + in;
+    ratio = ratio < 0.997f ? 0.997f : ratio > 1.003f ? 1.003f : ratio;
+    r->ratio = ratio;
+    uint32_t pos = r->pos;
+    float t = r->frac;
+    for (int i = 0; i < n; i++) {                       /* cubic Hermite between frames pos and pos + 1 */
+        for (int ch = 0; ch < 2; ch++) {
+            float xm = ur_at(ring, pos - 1u, ch), x0 = ur_at(ring, pos, ch), x1 = ur_at(ring, pos + 1u, ch),
+                  x2 = ur_at(ring, pos + 2u, ch);
+            float c1 = 0.5f * (x1 - xm), c2 = xm - 2.5f * x0 + 2.0f * x1 - 0.5f * x2,
+                  c3 = 0.5f * (x2 - xm) + 1.5f * (x0 - x1);
+            float v = ((c3 * t + c2) * t + c1) * t + x0;
+            (ch ? R : L)[i] = v;
+        }
+        t += ratio;
+        while (t >= 1.0f) {
+            t -= 1.0f;
+            pos++;
+        }
+    }
+    r->pos = pos;
+    r->frac = t;
+}
+
+/* ============================================ entry points that read their own settings ============================
+   (bank 1 only gates them on b2_live(): it is full; the settings store and its reader are stock's, callable from here) */
+typedef int (*pk_setting_fn)(const void *store, unsigned id);
+#define PK_SETTINGS ((const void *)(0x24020088u + 0x8c90u))
+static void pk_settings(const uint16_t *ids, int n, int *set)
+{
+    for (int k = 0; k < n; k++)
+        set[k] = ((pk_setting_fn)FN(0x08093e9c))(PK_SETTINGS, ids[k]);
+}
+
+void pk_dist_bus(uint8_t *bus0)
+{
+    static const uint16_t ids[5] = {P_D_TYPE, P_D_DRIVE, P_D_TONE, P_D_MIX, P_D_LEVEL};
+    int set[5];
+    pk_settings(ids, 5, set);
+    if (set[0] <= 0 || set[0] >= 5) {
+        *(volatile uint32_t *)PK_DIST_STATE = 0;      /* fresh state when switched on again */
+        return;
+    }
+    if (!bus0[0x10])
+        dist_bus(bus0, set);
+}
+
+void pk_fx_block(uint8_t *bus0, uint8_t *bus_fx2)
+{
+    static const uint16_t ids[6] = {P_R_TYPE, P_R_DECAY, P_R_DAMP, P_R_PREDLY, P_R_SIZE, P_R_LEVEL};
+    int set[6];
+    pk_settings(ids, 6, set);
+    fx_block(bus0, bus_fx2, set);
+}
+
+void pk_ssl_run(float *l, float *r, int n)
+{
+    static const uint16_t ids[6] = {P_S_THRESH, P_S_RATIO, P_S_ATTACK, P_S_REL, P_S_GAIN, P_S_MIX};
+    int set[6];
+    pk_settings(ids, 6, set);
+    ssl_run(l, r, n, set);
 }

@@ -15,6 +15,10 @@ load readout, …). Added by portkit (same as 3.1.n+pk3, see `bb/README.md`):
   (incl. Auto), Gain, Mix, Clipper. Same DSP as the micro's (bit-compared in test_jb.py).
 - **Recording**: the pad record rebuilt while recording keeps its FX1/FX2/FX3 sends; **Rec Input: FX** records only
   the effect returns (FX1 + FX2 + FX3), stereo.
+- **Rec Input: USB** (group `pk_usbin`): JOEBOX's USB device gets a second audio interface, computer → Blackbox,
+  stereo 24 bit / 48 kHz (endpoint 3, isochronous OUT, adaptive); the record source takes it rate-matched (PI loop,
+  Hermite interpolation, 8 ms buffer). Build-time edits of JOEBOX's `usbdev.c` and `test_usbdev.py`: `USBIN_EDITS`
+  in `build.py`. Details: `re/blackbox.md` "Rec Input: USB". Not tested on a unit yet.
 - Version on splash and Tools: **JB1+pk** (JOEBOX allows eight characters).
 - Every feature group can be switched off: `bb/joebox/features.py`, `build.py --groups`, the dashboard
   (`python3 bb/joebox/dashboard.py` → http://127.0.0.1:8765).

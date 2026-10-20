@@ -166,9 +166,10 @@ pk_clip_entry_stock:
  * 0x08062120 `cmp r3, #3; beq.w 0x0806277e` (6 bytes) -> bl rec_src_thunk; nop
  *   3 (Resam): on to the stock tap 0x0806277e (copies the main mix in, then continues at 0x08062126 itself)
  *   4 (FX):    rec_fx_copy(r8), back to 0x08062126 (through the nop)
- * 0x08062660 `cmp r3, #3; beq 0x0806266c` -> bl rec_mon_thunk: Resam or FX skip the input's monitor path
+ *   5 (USB):   rec_usb_copy(r8), the same way
+ * 0x08062660 `cmp r3, #3; beq 0x0806266c` -> bl rec_mon_thunk: Resam, FX or USB skip the input's monitor path
  * 0x0809b26a `cmp r0, #3; it ne; cmpne r0, #0` (record start: stereo for L+R / Resam) -> bl rec_stereo_thunk; nop,
- *   FX too; the `ite eq` after reads the flags */
+ *   FX and USB too; the `ite eq` after reads the flags */
     .global rec_src_thunk
     .thumb_func
     .type rec_src_thunk, %function
@@ -178,13 +179,19 @@ rec_src_thunk:
     ldr     ip, =0x0806277f
     bx      ip
 1:  cmp     r3, #4
+    beq     2f
+    cmp     r3, #5
     it      ne
     bxne    lr
-    push    {r0, r1, r2, r3, ip, lr}
+2:  push    {r0, r1, r2, r3, ip, lr}
     vpush   {s0-s15}
     mov     r0, r8
+    cmp     r3, #4
+    bne     3f
     bl      rec_fx_copy
-    vpop    {s0-s15}
+    b       4f
+3:  bl      rec_usb_copy
+4:  vpop    {s0-s15}
     pop     {r0, r1, r2, r3, ip, lr}
     bx      lr
 
@@ -195,6 +202,8 @@ rec_mon_thunk:
     cmp     r3, #3
     it      ne
     cmpne   r3, #4
+    it      ne
+    cmpne   r3, #5
     it      eq
     addeq   lr, lr, #8            /* was beq 0x0806266c: lr = 0x08062665 -> 0x0806266d */
     bx      lr
@@ -208,5 +217,7 @@ rec_stereo_thunk:
     cmpne   r0, #0
     it      ne
     cmpne   r0, #4
+    it      ne
+    cmpne   r0, #5
     bx      lr
     .ltorg

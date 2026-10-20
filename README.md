@@ -31,7 +31,7 @@ Fidelity and the 24 dB filter, saturation, LFO 2/3 with ENV/KEY sources, solo an
 sequence rotate, USB audio and MIDI, CPU readout. See the [JOEBOX documentation](https://github.com/j3threejay/blackbox-mod)
 for those.
 
-Added by portkit (all tested on a unit):
+Added by portkit (tested on a unit, except where noted):
 
 | Feature | Where on the unit |
 |---|---|
@@ -45,12 +45,20 @@ Added by portkit (all tested on a unit):
 | **SSL compressor**: ninth compressor model; Thresh, Ratio 2:1 / 4:1 / 10:1, Attack, Release (incl. Auto), Gain, Mix | Tools → Compressor: **SSL**, INFO for the controls |
 | **Record the effects only**: Rec Input **FX** records just the FX1 + FX2 + FX3 returns, in stereo | record screen → Rec Input |
 | **Sends kept while recording**: a pad's FX1 / FX2 / FX3 send settings no longer reset when it is recorded into | recording to a pad |
+| **Record from the computer** (new, not yet tested on a unit): Rec Input **USB** records what the computer plays to the Blackbox over USB, stereo, 24 bit / 48 kHz | record screen → Rec Input; computer on the power jack |
 
 Signal order on the main output: pads (with inserts) → FX1 / FX2 returns → FX3 → distortion → Master FX →
 compressor → clipper.
 
 **Recording the effects only:** select an empty pad, press INFO to open the record screen, set Rec Input to FX,
 start the transport with PLAY, then press REC (REC only works while the transport runs).
+
+**Recording from the computer:** connect the computer to the power jack, as for JOEBOX's USB audio. The Blackbox now
+also shows up as an *output* device on the computer ("Blackbox", 2 channels, 48 kHz); play into it. On the record
+screen set Rec Input to **USB** and record as usual. The Blackbox follows the computer's clock (it matches the rate
+by itself), so nothing else has to be set. While nothing comes from the computer, USB records silence. The input
+monitor is not used for this source. Computers that saw an older build may need the device unplugged and plugged in
+again to notice the new output.
 
 ## Good to know
 
@@ -90,7 +98,7 @@ bit-identical to the bitbox micro's.
 .venv/bin/python -I bb/joebox/dashboard.py       # -> http://127.0.0.1:8765
 ```
 
-Lists every change against stock (JOEBOX's and portkit's, 49 rows in `bb/joebox/features.py`) with a checkbox per
+Lists every change against stock (JOEBOX's and portkit's, 50 rows in `bb/joebox/features.py`) with a checkbox per
 group, builds the selection, runs the checks and offers both files. Groups marked *fest* (fixed) are JOEBOX parts the
 rest depends on. Runs on your machine only (it needs the firmware). The UI is German. Only the complete build goes
 through the full test suite.
@@ -104,7 +112,7 @@ through the full test suite.
 
 Checks `Presets/*/preset.xml` and `settings.tml` against the last build's parameter list and sets values that build
 does not have to the nearest stock entry (Sync 1/32 → 1/16, SSL → Glue, Rec Input FX → Resam, Fidelity modes →
-Normal). Only those values change; every other byte of the files stays. Presets using JOEBOX's note conditions are
+Normal, Rec Input USB → L+R). Only those values change; every other byte of the files stays. Presets using JOEBOX's note conditions are
 reported, not changed.
 
 ### Updating the browser patcher

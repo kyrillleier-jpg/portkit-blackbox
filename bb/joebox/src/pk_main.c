@@ -56,6 +56,7 @@ void comp_defaults(void *store, int param, int value); /* JOEBOX comp.c */
 #define TYPE_PCT 8
 
 #include "pk_ids.h"                                  /* bb/joebox/ids.py */
+#include "pk_groups.h"                               /* build.py: the groups of this build */
 
 #define PAD_SEGMENTS   0x240
 #define PAD_SYNCED     0x1f5
@@ -124,32 +125,36 @@ void sync_register(void *table, int param, const char *label, const char *const 
     fw_register_list(table, param, label, sync_names, 8, xml);
 }
 
-/* type 0 = list (names, max = count) */
-struct pdef { uint16_t id; uint8_t type; const char *label; int32_t min, max; const char *xml; const char *const *names; };
+/* type 0 = list (names by index, max = count). Packed (bank 1 is nearly full): label and xml name in one string
+   ("Label:\0xmlname"), dB ranges in whole dB (all are), names as an index into pnames */
+enum { N_NONE, N_DIST, N_RVB, N_SMODE, N_SRATIO, N_SATTACK, N_SREL, N_PLAYLEN };
+static const char *const *const pnames[N_PLAYLEN] = {0, dist_names, rvb_names, smode_names, sratio_names,
+                                                     sattack_names, srel_names};
+struct pdef { const char *lx; int16_t min, max; uint16_t id; uint8_t type, names; };
 static const struct pdef pdefs[] = {
-    {P_D_TYPE, 0, "Dist Type:", 0, 5, "pkdtype", dist_names},
-    {P_D_DRIVE, TYPE_DB, "Drive:", 0, 36000, "pkddrive", 0},
-    {P_D_TONE, TYPE_PCT, "Tone:", 0, 1000, "pkdtone", 0},
-    {P_D_MIX, TYPE_PCT, "Mix:", 0, 1000, "pkdmix", 0},
-    {P_D_LEVEL, TYPE_DB, "Level:", -24000, 12000, "pkdlevel", 0},
-    {P_R_TYPE, 0, "FX3 Type:", 0, 4, "pkfx3type", rvb_names},
-    {P_R_DECAY, TYPE_PCT, "FX3 Decay:", 0, 1000, "pkfx3decay", 0},
-    {P_R_DAMP, TYPE_PCT, "FX3 Damp:", 0, 1000, "pkfx3damp", 0},
-    {P_R_PREDLY, TYPE_PCT, "FX3 PreDly:", 0, 1000, "pkfx3predelay", 0},
-    {P_R_SIZE, TYPE_PCT, "FX3 Size:", 0, 1000, "pkfx3size", 0},
-    {P_R_LEVEL, TYPE_PCT, "FX3 Level:", 0, 1000, "pkfx3level", 0},
-    {P_SHIFT, TYPE_INT, "Shift ms:", -100, 100, "pkshift", 0},
-    {P_PLAYLEN, 0, "Play Len:", 0, 129, "pkplaylen", 0},          /* names made at boot */
-    {P_STRETCH, TYPE_INT, "Stretch %:", -100, 100, "pkstretch", 0},
-    {P_SMODE, 0, "Str Mode:", 0, 3, "pkstretchmode", smode_names},
-    {P_LFADE, TYPE_INT, "Loop Fade:", 0, 50, "pkloopfade", 0},
-    {P_FX3SEND, TYPE_PCT, "FX3 Send:", 0, 1000, "pkfx3send", 0},
-    {P_S_THRESH, TYPE_DB, "SSL Thresh:", -48000, 0, "pksslthresh", 0},
-    {P_S_RATIO, 0, "SSL Ratio:", 0, 3, "pksslratio", sratio_names},
-    {P_S_ATTACK, 0, "SSL Attack:", 0, 6, "pksslattack", sattack_names},
-    {P_S_REL, 0, "SSL Release:", 0, 5, "pksslrelease", srel_names},
-    {P_S_GAIN, TYPE_DB, "SSL Gain:", -12000, 24000, "pksslgain", 0},
-    {P_S_MIX, TYPE_PCT, "SSL Mix:", 0, 1000, "pksslmix", 0},
+    {"Dist Type:\0pkdtype", 0, 5, P_D_TYPE, 0, N_DIST},
+    {"Drive:\0pkddrive", 0, 36, P_D_DRIVE, TYPE_DB, 0},
+    {"Tone:\0pkdtone", 0, 1000, P_D_TONE, TYPE_PCT, 0},
+    {"Mix:\0pkdmix", 0, 1000, P_D_MIX, TYPE_PCT, 0},
+    {"Level:\0pkdlevel", -24, 12, P_D_LEVEL, TYPE_DB, 0},
+    {"FX3 Type:\0pkfx3type", 0, 4, P_R_TYPE, 0, N_RVB},
+    {"FX3 Decay:\0pkfx3decay", 0, 1000, P_R_DECAY, TYPE_PCT, 0},
+    {"FX3 Damp:\0pkfx3damp", 0, 1000, P_R_DAMP, TYPE_PCT, 0},
+    {"FX3 PreDly:\0pkfx3predelay", 0, 1000, P_R_PREDLY, TYPE_PCT, 0},
+    {"FX3 Size:\0pkfx3size", 0, 1000, P_R_SIZE, TYPE_PCT, 0},
+    {"FX3 Level:\0pkfx3level", 0, 1000, P_R_LEVEL, TYPE_PCT, 0},
+    {"Shift ms:\0pkshift", -100, 100, P_SHIFT, TYPE_INT, 0},
+    {"Play Len:\0pkplaylen", 0, 129, P_PLAYLEN, 0, N_PLAYLEN},
+    {"Stretch %:\0pkstretch", -100, 100, P_STRETCH, TYPE_INT, 0},
+    {"Str Mode:\0pkstretchmode", 0, 3, P_SMODE, 0, N_SMODE},
+    {"Loop Fade:\0pkloopfade", 0, 50, P_LFADE, TYPE_INT, 0},
+    {"FX3 Send:\0pkfx3send", 0, 1000, P_FX3SEND, TYPE_PCT, 0},
+    {"SSL Thresh:\0pksslthresh", -48, 0, P_S_THRESH, TYPE_DB, 0},
+    {"SSL Ratio:\0pksslratio", 0, 3, P_S_RATIO, 0, N_SRATIO},
+    {"SSL Attack:\0pksslattack", 0, 6, P_S_ATTACK, 0, N_SATTACK},
+    {"SSL Release:\0pksslrelease", 0, 5, P_S_REL, 0, N_SREL},
+    {"SSL Gain:\0pksslgain", -12, 24, P_S_GAIN, TYPE_DB, 0},
+    {"SSL Mix:\0pksslmix", 0, 1000, P_S_MIX, TYPE_PCT, 0},
 };
 #define NPDEFS (int)(sizeof pdefs / sizeof pdefs[0])
 
@@ -159,10 +164,16 @@ void bb_register(void *table, int param, int type, const char *label, int min, i
     comp_register(table, param, type, label, min, max, xml);
     for (int k = 0; k < NPDEFS; k++) {
         const struct pdef *p = &pdefs[k];
+        const char *xn = p->lx;
+        while (*xn++)
+            ;
         if (p->type == 0)
-            fw_register_list(table, p->id, p->label, p->id == P_PLAYLEN ? playlen_names() : p->names, p->max, p->xml);
-        else
-            fw_register_num(table, p->id, p->type, p->label, p->min, p->max, p->xml);
+            fw_register_list(table, p->id, p->lx, p->names == N_PLAYLEN ? playlen_names() : pnames[p->names], p->max,
+                             xn);
+        else {
+            int k1 = p->type == TYPE_DB ? 1000 : 1;
+            fw_register_num(table, p->id, p->type, p->lx, p->min * k1, p->max * k1, xn);
+        }
     }
 }
 
@@ -192,16 +203,8 @@ void pad_store_add(void *store, unsigned param, int value)
 /* dist_thunk at 0x08053528 (bus 0 = r6) */
 void master_dist(uint8_t *bus0)
 {
-    static const uint16_t ids[5] = {P_D_TYPE, P_D_DRIVE, P_D_TONE, P_D_MIX, P_D_LEVEL};
-    int set[5];
-    for (int k = 0; k < 5; k++)
-        set[k] = fw_setting(SETTINGS, ids[k]);
-    if (set[0] <= 0 || set[0] >= 5) {
-        *(volatile uint32_t *)PK_DIST_STATE = 0;      /* fresh state when switched on again */
-        return;
-    }
-    if (!bus0[0x10] && b2_live())
-        pk_dist_bus(bus0, set);
+    if (b2_live())
+        pk_dist_bus(bus0);                              /* reads its settings itself */
 }
 
 /* ============================================ clip ============================================ */
@@ -467,25 +470,15 @@ void fx3_send(uint8_t *scratch, const uint8_t *pad)
 void fx3_master(uint8_t *bus0, uint8_t *bus_fx2)
 {
     fw_mix(bus0, bus_fx2);
-    if (!b2_live())
-        return;
-    static const uint16_t ids[6] = {P_R_TYPE, P_R_DECAY, P_R_DAMP, P_R_PREDLY, P_R_SIZE, P_R_LEVEL};
-    int set[6];
-    for (int k = 0; k < 6; k++)
-        set[k] = fw_setting(SETTINGS, ids[k]);
-    pk_fx_block(bus0, bus_fx2, set);
+    if (b2_live())
+        pk_fx_block(bus0, bus_fx2);
 }
 
 /* ============================================ SSL (JOEBOX comp.c calls this for its model "SSL") ============== */
 void pk_ssl(float *l, float *r, int n)
 {
-    static const uint16_t ids[6] = {P_S_THRESH, P_S_RATIO, P_S_ATTACK, P_S_REL, P_S_GAIN, P_S_MIX};
-    if (!b2_live())
-        return;
-    int set[6];
-    for (int k = 0; k < 6; k++)
-        set[k] = fw_setting(SETTINGS, ids[k]);
-    pk_ssl_run(l, r, n, set);
+    if (b2_live())
+        pk_ssl_run(l, r, n);
 }
 
 /* ============================================ recording ============================================ */
@@ -510,10 +503,11 @@ void rec_reinit(void *store, const uint8_t *type)
             fw_store_set(store, sends[k], v[k]);
 }
 
-/* Rec Input (0x9a): the stock four (list 0x080ec704: L+R, Left, Right, Resam) + FX, appended (stored values keep
-   their meaning) */
-static const char *const rec_names[5] = {
+/* Rec Input (0x9a): the stock four (list 0x080ec704: L+R, Left, Right, Resam) + FX (+ USB), appended (stored values
+   keep their meaning) */
+static const char *const rec_names[6] = {
     (const char *)0x080ce6bcu, (const char *)0x080ce6c0u, (const char *)0x080ce6c8u, (const char *)0x080ce6d0u, "FX",
+    "USB",
 };
 
 void rec_input_register(void *table, int param, const char *label, const char *const *names, int count,
@@ -521,13 +515,64 @@ void rec_input_register(void *table, int param, const char *label, const char *c
 {
     (void)names;
     (void)count;
-    fw_register_list(table, param, label, rec_names, 5, xml);
+    fw_register_list(table, param, label, rec_names, PK_HAS_USBIN ? 6 : 5, xml);
 }
 
 /* pk_thunk.S rec_src_thunk: the record node's source with Rec Input FX: the FX sum instead of the main mix */
 void rec_fx_copy(void *dst)
 {
     fw_buf_copy(dst, (const void *)PK_FXSUM_BUF);
+}
+
+/* ... and with Rec Input USB: the computer's stream (bank 2 rate-matches it); silence while there is none */
+static const uint32_t usb_silent[5] = {128, 128, (uint32_t)PK_USBIN_L, (uint32_t)PK_USBIN_R, 0x101};
+
+void rec_usb_copy(void *dst)
+{
+    const void *src = usb_silent;
+    if (PK_UI->on == USBIN_ON) {
+        pk_usbin_fill(fw_buf_frames(dst));
+        src = (const void *)PK_USBIN_BUF;
+    }
+    fw_buf_copy(dst, src);
+}
+
+/* --- JOEBOX usbdev.c's hooks for endpoint 3 (build.py USBIN_EDITS); bank 2 only while the stream is open, which it
+   is only after b2_live() (asked from the task, never from the interrupt: its first call may scan bank 2) -------- */
+void usbin_reset(void)                                  /* core_setup, every boot: nothing open */
+{
+    PK_UI->on = 0;
+}
+
+void usbin_open(int on)                                 /* task: SET_INTERFACE 2, SET_CONFIGURATION, bus reset */
+{
+    int was = PK_UI->on == USBIN_ON;
+    PK_UI->on = 0;
+    if (was)
+        pk_usbin_close();
+    if (on && b2_live())
+        PK_UI->on = pk_usbin_open() ? USBIN_ON : 0;
+}
+
+int usbin_alt(void)                                     /* GET_INTERFACE 2 */
+{
+    return PK_UI->on == USBIN_ON;
+}
+
+void usbin_rx(unsigned bytes)                           /* interrupt: endpoint 3's packet waits in the receive FIFO */
+{
+    if (PK_UI->on == USBIN_ON) {
+        pk_usbin_rx(bytes);
+        return;
+    }
+    for (unsigned i = 0; i < bytes; i += 4)             /* not ours to take: read it out all the same */
+        (void)*(volatile uint32_t *)0x40041000u;
+}
+
+void usbin_done(void)                                   /* interrupt: endpoint 3's transfer finished, or one missed */
+{
+    if (PK_UI->on == USBIN_ON)
+        pk_usbin_arm();
 }
 
 /* version shown on the splash / Tools (patches/pk.py repoints JOEBOX's four users) */

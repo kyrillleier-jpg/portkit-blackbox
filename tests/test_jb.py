@@ -425,7 +425,7 @@ check("recording rebuild: FX1/FX2/FX3 Send kept, other settings back to default"
 # --- Rec Input FX: list, the three thunks, the FX sum
 ri = entry(0x9A)
 rnames = [e.cstr(e.r32(ri[3] + 4 * k)) for k in range(ri[4])]
-check("Rec Input: L+R, Left, Right, Resam + FX", rnames == ["L+R", "Left", "Right", "Resam", "FX"], rnames)
+check("Rec Input: L+R, Left, Right, Resam + FX + USB", rnames == ["L+R", "Left", "Right", "Resam", "FX", "USB"], rnames)
 from unicorn.arm_const import UC_ARM_REG_CPSR, UC_ARM_REG_LR, UC_ARM_REG_R8, UC_ARM_REG_PC  # noqa: E402
 
 
@@ -434,8 +434,18 @@ def zflag(fn, **regs):
     return bool(e.mu.reg_read(UC_ARM_REG_CPSR) & (1 << 30))
 
 
-check("record start: stereo for L+R, Resam and FX, mono for Left / Right",
-      [zflag("rec_stereo_thunk", r0=v) for v in range(5)] == [True, False, False, True, True])
+check("record start: stereo for L+R, Resam, FX and USB, mono for Left / Right",
+      [zflag("rec_stereo_thunk", r0=v) for v in range(6)] == [True, False, False, True, True, True])
+from bb_emu import RET  # noqa: E402
+from unicorn import UC_HOOK_CODE  # noqa: E402
+skipped = []
+e.mu.hook_add(UC_HOOK_CODE, lambda uc, a, size, _: (skipped.append(1), uc.emu_stop()), begin=RET + 8, end=RET + 8)
+mon = []
+for v in range(6):
+    skipped.clear()
+    e.call(SYM["rec_mon_thunk"], 0, 0, 0, v)
+    mon.append(bool(skipped))
+check("input monitor skipped (return + 8) for Resam, FX and USB only", mon == [False, False, False, True, True, True], mon)
 taps = []
 e.stub(0x0806277E, lambda uc: taps.append("stock"))
 dst = e.new(0x14)
@@ -456,5 +466,166 @@ e.call(SYM["rec_src_thunk"], 0, 0, 0, 4, regs=[(UC_ARM_REG_R8, dst)])
 fxl = e.rf(dl, 4)
 check("record source: Resam -> stock tap, FX -> FX1 + FX2 (+ FX3) copied into the record buffer, L+R untouched",
       taps == ["stock"] and all(abs(x - 0.75) < 1e-6 for x in fxl), (taps, fxl))
+
+# --- Rec Input USB: endpoint 3 (JOEBOX usbdev.c's hooks -> bank 1 usbin_* -> bank 2), the ring, the rate-matched reader
+import math  # noqa: E402
+from unicorn import UC_HOOK_MEM_READ  # noqa: E402
+try:
+    e.mu.mem_map(0x40040000, 0x4000)                     # OTG_HS registers and its FIFO window
+except Exception:
+    pass
+OTG, UI, RING_A, BUF = 0x40040000, 0x38003F00, 0x38004000, 0x38006400
+fifo = []
+
+
+def fifo_read(uc, access, addr, size, value, data):
+    uc.mem_write(OTG + 0x1000, struct.pack("<I", fifo.pop(0) if fifo else 0xDEADBEEF))
+
+
+e.mu.hook_add(UC_HOOK_MEM_READ, fifo_read, begin=OTG + 0x1000, end=OTG + 0x1003)
+
+
+def packet(frames):
+    """[(l, r) 24-bit ints] -> (FIFO words, byte count)"""
+    raw = b"".join(struct.pack("<i", l)[:3] + struct.pack("<i", r)[:3] for l, r in frames)
+    n = len(raw)
+    raw += bytes((-n) % 4)
+    return list(struct.unpack(f"<{len(raw) // 4}I", raw)), n
+
+
+def rx(frames):
+    words, n = packet(frames)
+    fifo[:] = words
+    e.call(SYM["usbin_rx"], n)
+    return not fifo                                      # every word of the packet read out
+
+
+def ring_at(k):
+    return struct.unpack("<ii", bytes(e.mu.mem_read(RING_A + 8 * (k % 1024), 8)))
+
+
+e.call(SYM["usbin_reset"])
+check("USB in: closed after core_setup", e.r32(UI) == 0)
+live[0] = 0
+e.call(SYM["usbin_open"], 1)
+check("USB in: without bank 2 the stream does not open", e.r32(UI) == 0)
+live[0] = 1
+e.w32(OTG + 0x808, 0)                                   # DSTS: frame 0 now
+e.call(SYM["usbin_open"], 1)
+ctl, tsiz = e.r32(OTG + 0xB60), e.r32(OTG + 0xB70)
+check("USB in: open = endpoint 3 active, isochronous, 294 bytes, armed for the next (odd) frame",
+      e.r32(UI) == 0x55534231 and ctl & 0x7FF == 294 and ctl & (1 << 15) and (ctl >> 18) & 3 == 1
+      and ctl & (1 << 31) and ctl & (1 << 29) and tsiz == (1 << 19) | 294, (hex(ctl), hex(tsiz)))
+r0 = e.call(SYM["usbin_alt"])
+check("USB in: GET_INTERFACE answers alt 1", e.mu.reg_read(UC_ARM_REG_R0) == 1)
+pkt = [(k * 1000 - 24000, -k * 777 + 8388607 * (k == 47)) for k in range(48)]
+ok = rx(pkt)
+check("USB in: a 48-frame packet: all 72 words read, 48 frames in the ring (24 bit, sign kept)",
+      ok and e.r32(UI + 4) == 48 and [ring_at(k) for k in range(48)] == pkt, [ring_at(k) for k in (0, 1, 47)])
+words, _ = packet(pkt[:10])
+fifo[:] = words + [0]
+e.call(SYM["usbin_rx"], 62)
+check("USB in: a packet of an odd size: read out, counted bad, nothing written",
+      not fifo and e.r32(UI + 12) == 1 and e.r32(UI + 4) == 48)
+fifo[:] = []
+e.w32(OTG + 0x808, 1 << 8)                              # frame 1: next is even
+e.mu.mem_write(OTG + 0xB60, struct.pack("<I", 294 | (1 << 15) | (1 << 18)))
+e.call(SYM["usbin_done"])
+check("USB in: transfer done / frame missed -> armed again, for the next frame's parity (even)",
+      e.r32(OTG + 0xB60) & (1 << 31) and e.r32(OTG + 0xB60) & (1 << 28), hex(e.r32(OTG + 0xB60)))
+e.call(SYM["usbin_open"], 0)
+check("USB in: closed: endpoint 3 inactive", e.r32(UI) == 0 and not e.r32(OTG + 0xB60) & (1 << 15))
+check("USB in: closed: a packet is still read out of the FIFO, and dropped", rx(pkt) and e.r32(UI + 4) == 48)
+
+# reader: what the recorder gets (rec_src_thunk with Rec Input 5 -> rec_usb_copy)
+e.call(SYM["usbin_open"], 1)
+SR, F0, AMP = 48000.0, 997.0, 0.5
+src_n = [0]
+
+
+def push(frames):
+    """the computer sends `frames` more of a sine, in packets of up to 48"""
+    while frames > 0:
+        m = min(48, frames)
+        fr = []
+        for _ in range(m):
+            v = int(round(AMP * math.sin(2 * math.pi * F0 * src_n[0] / SR) * 8388607))
+            fr.append((v, -v))
+            src_n[0] += 1
+        rx(fr)
+        frames -= m
+
+
+def rec_block():
+    """what the recorder's buffer holds after the source step: (silent, L, R)"""
+    e.mu.mem_write(dst, struct.pack("<IIIIBB2x", N, N, dl, dr, 0, 1))
+    e.wf(dl, [9.0] * N)
+    e.wf(dr, [9.0] * N)
+    e.call(SYM["rec_src_thunk"], 0, 0, 0, 5, regs=[(UC_ARM_REG_R8, dst)])
+    l, r = e.rf(e.r32(dst + 8), N), e.rf(e.r32(dst + 12), N)
+    quiet = e.mu.mem_read(dst + 16, 1)[0] == 1 or (max(map(abs, l)) == 0 and max(map(abs, r)) == 0)
+    return int(quiet), l, r
+
+
+push(300)
+sil, _, _ = rec_block()
+check("USB in: under 8 ms of fresh data: the recorder gets silence", sil == 1)
+push(200)
+sil, l, r = rec_block()
+w = e.r32(UI + 4)
+want = [AMP * math.sin(2 * math.pi * F0 * (w - 384 + k) / SR) for k in range(N)]
+err = max(abs(a - b) for a, b in zip(l, want))
+check(f"USB in: then it starts 384 frames behind the computer, sample for sample (max err {err:.1e}), R = -L",
+      sil == 0 and err < 2e-7 and all(abs(a + b) < 1e-9 for a, b in zip(l, r)), err)
+def drift(factor, blocks=7500):
+    """the computer's clock off by `factor` for ~20 s: (silence seen, largest step, settled rate, fills, under, resync)"""
+    acc, prev, worst, fills = 0.0, None, 0.0, []
+    u0, s0 = e.r32(0x38006500 + 20), e.r32(0x38006500 + 24)
+    for blk in range(blocks):
+        acc += 128 * factor
+        k = int(acc)
+        acc -= k
+        push(k)
+        sil, l, r = rec_block()
+        if sil:
+            return True, worst, 0, fills, 0, 0
+        seq = ([prev] if prev is not None else []) + l
+        worst = max(worst, max(abs(seq[i + 1] - seq[i]) for i in range(len(seq) - 1)))
+        prev = l[-1]
+        if blk % 500 == 499:                            # the reader's smoothed fill (frames ahead before a block)
+            fills.append(round(struct.unpack("<f", bytes(e.mu.mem_read(0x38006500 + 16, 4)))[0]))
+    ratio = struct.unpack("<f", struct.pack("<I", e.r32(0x38006500 + 12)))[0]
+    return False, worst, ratio, fills, e.r32(0x38006500 + 20) - u0, e.r32(0x38006500 + 24) - s0
+
+
+slope = 2 * math.pi * F0 / SR * AMP
+for factor in (1.001, 0.999):
+    e.call(SYM["usbin_open"], 0)                        # a fresh stream for each computer (its clock does not jump)
+    e.call(SYM["usbin_open"], 1)
+    push(500)
+    rec_block()
+    sil, worst, ratio, fills, under, resync = drift(factor, 15000)
+    check(f"USB in: computer's clock {factor - 1:+.1%} over 40 s: no gap, no jump (largest step {worst:.4f}, a sine "
+          f"step at most {slope:.4f}), rate {ratio:.5f}, buffer back at {fills[-1] if fills else '-'} of 384 frames "
+          f"(lowest {min(fills) if fills else '-'})",
+          not sil and worst < slope * 1.05 and abs(ratio - factor) < 0.0002 and under == 0 and resync == 0
+          and abs(fills[-1] - 384) < 30 and min(fills) > 200, (worst, ratio, under, resync, fills))
+# the computer stops: what is buffered (~9 ms) plays out, then silence, and the old ring is never played again
+played = 0
+while played < 8 and not rec_block()[0]:
+    played += 1
+sil1, _, _ = rec_block()
+sil2, _, _ = rec_block()
+push(200)
+sil3, _, _ = rec_block()
+push(250)
+sil4, l, _ = rec_block()
+check(f"USB in: the computer stops -> its last {played} blocks play out, then silence (not the old ring again); "
+      "back: silence until 8 ms are new, then sound",
+      played <= 4 and (sil1, sil2, sil3, sil4) == (1, 1, 1, 0) and max(abs(x) for x in l) > 0.3,
+      (played, sil1, sil2, sil3, sil4))
+e.call(SYM["usbin_open"], 0)
+sil5, _, _ = rec_block()
+check("USB in: stream closed -> Rec Input USB records silence", sil5 == 1)
 
 done()

@@ -29,6 +29,11 @@
 #define PK_ACC_L       ((float *)0x30044000u)   /* FX3 send accumulator */
 #define PK_ACC_R       ((float *)0x30044200u)
 #define PK_D2_END      0x30044400u
+#define PK_USBIN_RING  ((int32_t *)0x38004000u)  /* .. 0x38005fff  audio from the computer: 1024 frames x L, R (24 bit) */
+#define PK_USBIN_L     ((float *)0x38006000u)    /* .. 0x380061ff  one block of it, rate-matched, for the recorder */
+#define PK_USBIN_R     ((float *)0x38006200u)    /* .. 0x380063ff */
+#define PK_USBIN_BUF   0x38006400u               /* .. 0x38006413  a buffer struct around them (as PK_FXSUM_BUF) */
+#define PK_USBIN_RD    0x38006500u               /* .. 0x3800651f  the reader's state (task only, struct usbin_rd) */
 
 /* --- WSOLA ---------------------------------------------------------------------------------------------------------- */
 typedef int (*pk_read1_fn)(void *stream, float *dst, int n, int pos, int ch, const uint8_t *pad);
@@ -80,7 +85,7 @@ int pk_clip_render(void *pad, int unused, int64_t pos64, float rate, int n, int 
 
 /* --- distortion ----------------------------------------------------------------------------------------------------- */
 /* bank 2: bus 0 through the distortion; set = Dist Type, Drive, Tone, Mix, Level as stored */
-void pk_dist_bus(uint8_t *bus0, const int *set);
+void pk_dist_bus(uint8_t *bus0);
 
 /* --- loop fade (clips) ---------------------------------------------------------------------------------------------- */
 /* bank 2: a dip of f frames at the seams 0, end and (if > 0) seam; frames at logical positions pos .. pos + n */
@@ -101,11 +106,39 @@ struct fx3 {
 /* bank 2: the block's FX work after the FX2 return is in bus 0: the FX sum (FX1 + FX2 returns, + FX3) for "Rec Input:
    FX", and FX3 itself (set up on the first call, then the reverb onto bus 0). set = FX3 Type, Decay, Damp, Pre-Delay,
    Size, Level */
-void pk_fx_block(uint8_t *bus0, uint8_t *bus_fx2, const int *set);
+void pk_fx_block(uint8_t *bus0, uint8_t *bus_fx2);
 /* bank 2: the SSL model on Out 1 (in place); set = Thresh, Ratio, Attack, Release, Gain, Mix as stored */
-void pk_ssl_run(float *l, float *r, int n, const int *set);
+void pk_ssl_run(float *l, float *r, int n);
 /* bank 2: scratch x g into FX3's accumulator */
 void pk_fx3_add(const uint8_t *scratch, float g);
 #define PK_F3MAGIC 0x46583342u   /* "FX3B" at PK_FX3_STATE: set up, the accumulator may be filled */
+
+/* --- USB audio from the computer (Rec Input: USB) --------------------------------------------------------------------
+ * JOEBOX's usbdev.c (edited at build time, build.py USBIN_EDITS) gets a second audio streaming interface: endpoint 3,
+ * isochronous OUT, adaptive, 2 x 24 bit at 48 kHz. Its receive FIFO handler hands endpoint 3's packets to bank 1's
+ * usbin_rx, which passes them to bank 2 while the stream is open (opened only after b2_live(), from the task). */
+struct usbin {                  /* SRAM4; the interrupt and the task. usbdev.c's core_setup clears it every boot */
+    uint32_t on;                /* USBIN_ON while the computer streams to us and bank 2 takes it */
+    uint32_t write;             /* frames written into PK_USBIN_RING (interrupt) */
+    uint32_t packets, bad;      /* packets taken; packets of an odd size, dropped */
+};
+#define PK_UI ((volatile struct usbin *)0x38003f00u)  /* .. 0x38003f0f */
+#define USBIN_ON 0x55534231u    /* "USB1": SRAM keeps old values over a reset, so not a plain flag */
+#define USBIN_RING 1024u        /* frames */
+#define USBIN_MAX 294u          /* bytes a packet: 49 frames x 2 x 3 */
+struct usbin_rd {               /* the reader (task context, bank 2) */
+    uint32_t magic;             /* PK_URMAGIC: set up */
+    uint32_t pos;               /* integer frame position (counts like write) */
+    float frac, ratio, fill;    /* fraction of a frame, read rate (1 = nominal), smoothed fill */
+    uint32_t underruns, resyncs;
+    float integ;                /* the integral part of the rate (the computer's clock offset; kept over a dropout) */
+};
+_Static_assert(sizeof(struct usbin_rd) <= 0x20, "usbin_rd runs past PK_USBIN_RD's 32 bytes");
+#define PK_URMAGIC 0x55524431u  /* "URD1" */
+int pk_usbin_open(void);                 /* bank 2, task: endpoint 3 set up and armed; USBIN_ON */
+void pk_usbin_close(void);               /* bank 2, task */
+void pk_usbin_rx(unsigned bytes);        /* bank 2, interrupt: a packet in the receive FIFO, into the ring */
+void pk_usbin_arm(void);                 /* bank 2, interrupt: endpoint 3 again, for the next frame */
+void pk_usbin_fill(int n);               /* bank 2, task: n rate-matched frames into PK_USBIN_L / R + its struct */
 
 #endif

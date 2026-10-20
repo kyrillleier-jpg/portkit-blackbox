@@ -79,10 +79,89 @@ SSL_EDITS = [
 ]
 
 
+# Rec Input: USB (pk_usbin). JOEBOX's USB device (src/usbdev.c) gets a second audio streaming interface: the computer
+# sends 2 x 24 bit at 48 kHz on endpoint 3 (isochronous OUT, adaptive), bank 1's usbin_* hooks take it (pk_main.c).
+# MIDI streaming moves from interface 2 to 3. bcdDevice 1.01, so a host that cached the old descriptors reads them again.
+USBIN_EDITS = [
+    ("src/usbdev.c", "uint8_t *master_block(void);     /* master.c: the SDRAM block taken at boot, or 0 */\n",
+     "uint8_t *master_block(void);     /* master.c: the SDRAM block taken at boot, or 0 */\n"
+     "void usbin_reset(void);          /* portkit pk_main.c: audio from the computer on endpoint 3 */\n"
+     "void usbin_open(int on);\nint usbin_alt(void);\nvoid usbin_rx(unsigned bytes);\nvoid usbin_done(void);\n"),
+    ("src/usbdev.c", "    0x00, 0x01, 1, 2, 0, 1,\n", "    0x01, 0x01, 1, 2, 0, 1,      /* bcdDevice 1.01: portkit's audio from the computer */\n"),
+    ("src/usbdev.c", "static const uint8_t CONFIG[175] = {\n    9, 2, 175, 0, 3, 1, 0, 0x80, 250,\n",
+     "static const uint8_t CONFIG[249] = {\n    9, 2, 249, 0, 4, 1, 0, 0x80, 250,\n"),
+    ("src/usbdev.c", "    10, 0x24, 1, 0x00, 0x01, 31, 0, 2, 1, 2,     /* control header: streaming interfaces 1 and 2 */\n",
+     "    11, 0x24, 1, 0x00, 0x01, 53, 0, 3, 1, 2, 3,  /* control header: streaming interfaces 1, 2 (portkit) and 3 */\n"),
+    ("src/usbdev.c", "    9, 0x24, 3, 2, 0x01, 0x01, 0, 1, 0,          /* terminal 2: USB streaming, fed by 1 */\n",
+     "    9, 0x24, 3, 2, 0x01, 0x01, 0, 1, 0,          /* terminal 2: USB streaming, fed by 1 */\n"
+     "    12, 0x24, 2, 3, 0x01, 0x01, 0, 2, 0x03, 0, 0, 0,   /* portkit: terminal 3: USB streaming in, stereo */\n"
+     "    9, 0x24, 3, 4, 0x03, 0x06, 0, 3, 0,          /* portkit: terminal 4: line connector, fed by 3 */\n"),
+    ("src/usbdev.c", "    7, 0x25, 1, 0, 0, 0, 0,\n    9, 4, 2, 0, 2, 1, 3, 0, 0,                   /* MIDI streaming */\n",
+     "    7, 0x25, 1, 0, 0, 0, 0,\n"
+     "    9, 4, 2, 0, 0, 1, 2, 0, 0,                   /* portkit: audio from the computer, alt 0: closed */\n"
+     "    9, 4, 2, 1, 1, 1, 2, 0, 0,                   /* alt 1: one endpoint */\n"
+     "    7, 0x24, 1, 3, 1, 1, 0,                      /* to terminal 3, PCM */\n"
+     "    11, 0x24, 2, 1, 2, 3, 24, 1, 0x80, 0xbb, 0x00,   /* stereo, 3-byte samples, 24 bits, 48000 only */\n"
+     "    9, 5, 0x03, 0x09, 0x26, 0x01, 1, 0, 0,       /* isochronous OUT, adaptive, up to 294 bytes every frame */\n"
+     "    7, 0x25, 1, 0, 0, 0, 0,\n"
+     "    9, 4, 3, 0, 2, 1, 3, 0, 0,                   /* MIDI streaming */\n"),
+    ("src/usbdev.c", "        uint32_t st = GRXSTSP, bytes = (st >> 4) & 0x7ffu, kind = (st >> 17) & 0xfu, ep = st & 0xfu;\n",
+     "        uint32_t st = GRXSTSP, bytes = (st >> 4) & 0x7ffu, kind = (st >> 17) & 0xfu, ep = st & 0xfu;\n"
+     "        if (ep == 3 && (kind == 2 || kind == 3)) {         /* portkit: audio from the computer */\n"
+     "            if (kind == 2)\n                usbin_rx(bytes);\n            else\n                usbin_done();\n"
+     "            continue;\n        }\n"),
+    ("src/usbdev.c", "    if (ints & RXFLVL)\n        receive();\n",
+     "    if (ints & RXFLVL)\n        receive();\n"
+     "    if (GINTSTS & (1u << 21)) {                              /* portkit: endpoint 3 missed its frame: arm again */\n"
+     "        GINTSTS = 1u << 21;\n        usbin_done();\n    }\n"),
+    ("src/usbdev.c", "        if (type == 0x01 && S->setup[4] == 1)                /* the audio stream opens (alt 1) or closes */\n"
+                     "            audio_open(lo == 1);\n",
+     "        if (type == 0x01 && S->setup[4] == 1)                /* the audio stream opens (alt 1) or closes */\n"
+     "            audio_open(lo == 1);\n"
+     "        else if (type == 0x01 && S->setup[4] == 2)           /* portkit: audio from the computer */\n"
+     "            usbin_open(lo == 1);\n"),
+    ("src/usbdev.c", "        buf[0] = S->setup[4] == 1 ? S->alt : 0;\n",
+     "        buf[0] = S->setup[4] == 1 ? S->alt : S->setup[4] == 2 ? (uint8_t)usbin_alt() : 0;\n"),
+    ("src/usbdev.c", "        S->config = (uint8_t)lo;\n        audio_open(0);\n",
+     "        S->config = (uint8_t)lo;\n        audio_open(0);\n        usbin_open(0);\n"),
+    ("src/usbdev.c", "        S->config = 0;\n        audio_open(0);\n",
+     "        S->config = 0;\n        audio_open(0);\n        usbin_open(0);\n"),
+    ("src/usbdev.c", "    GRXFSIZ = 0x80;\n    DIEPTXF0 = (0x40u << 16) | 0x80u;\n    DIEPTXF1 = (0x40u << 16) | 0xc0u;\n"
+                     "    DIEPTXF2 = (0x100u << 16) | 0x100u;                      /* 1024 bytes: one audio packet is at most 882 */\n"
+                     "    S->alt = 0;\n",
+     "    GRXFSIZ = 0x100;                                         /* portkit: room for an audio packet from the computer */\n"
+     "    DIEPTXF0 = (0x40u << 16) | 0x100u;\n    DIEPTXF1 = (0x40u << 16) | 0x140u;\n"
+     "    DIEPTXF2 = (0x100u << 16) | 0x180u;                      /* 1024 bytes: one audio packet is at most 882 */\n"
+     "    S->alt = 0;\n    usbin_reset();\n"),
+    # his test of the device: the descriptor grows by the new interface, MIDI is interface 3, SRAM4 holds our state
+    ("test_usbdev.py", "e.uc.mem_map(0x38800000, 0x1000)\n", "e.uc.mem_map(0x38800000, 0x1000)\ne.uc.mem_map(0x38000000, 0x10000)   # portkit: SRAM4 (USB in)\n"),
+    ("test_usbdev.py", 'check("configuration descriptor header (9 bytes asked): total length 175, three interfaces", d and len(d) == 9 and d[2] == 175 and d[4] == 3, d)',
+     'check("configuration descriptor header (9 bytes asked): total length 249, four interfaces (portkit)", d and len(d) == 9 and d[2] == 249 and d[4] == 4, d)'),
+    ("test_usbdev.py", 'check("whole configuration: 175 bytes over three packets (64 + 64 + 47), one per block", d and len(d) == 175 and core.chunks == [64, 64, 47], (d and len(d), core.chunks))',
+     'check("whole configuration: 249 bytes over four packets (64 + 64 + 64 + 57), one per block", d and len(d) == 249 and core.chunks == [64, 64, 64, 57], (d and len(d), core.chunks))'),
+    ("test_usbdev.py", "      used == 175 and len(ms) == 1 and ms[0][2] == 2 and ms[0][4] == 2\n"
+                       "      and [(x[2], x[3], x[4] | x[5] << 8) for x in eps] == [(0x82, 5, 882), (1, 2, 64), (0x81, 2, 64)], parts)",
+     "      used == 249 and len(ms) == 1 and ms[0][2] == 3 and ms[0][4] == 2\n"
+     "      and [(x[2], x[3], x[4] | x[5] << 8) for x in eps] == [(0x82, 5, 882), (3, 9, 294), (1, 2, 64), (0x81, 2, 64)], parts)"),
+    ("test_usbdev.py", "ac = [x for x in parts if x[1] == 0x24 and x[2] == 1 and len(x) == 10][0]",
+     "ac = [x for x in parts if x[1] == 0x24 and x[2] == 1 and len(x) == 11][0]"),
+    ("test_usbdev.py", 'check("audio control header: its length field covers itself + both terminals (31), and it lists interfaces 1 and 2",\n'
+                       "      ac[5] == sum(len(x) for x in parts[ac_i:ac_i + 3]) == 31 and list(ac[7:10]) == [2, 1, 2], ac)",
+     'check("audio control header: its length field covers itself + four terminals (53), and it lists interfaces 1, 2, 3",\n'
+     "      ac[5] == sum(len(x) for x in parts[ac_i:ac_i + 5]) == 53 and list(ac[7:11]) == [3, 1, 2, 3], ac)"),
+    ("test_usbdev.py", "      alts == [(1, 0, 0), (1, 1, 1)] and 49 * 6 * 3 == 882, alts)",
+     "      alts == [(1, 0, 0), (1, 1, 1), (2, 0, 0), (2, 1, 1)] and 49 * 6 * 3 == 882, alts)"),
+    ("test_usbdev.py", "r = control(struct.pack(\"<BBHHH\", 0x01, 11, 0, 2, 0))\n",
+     "r = control(struct.pack(\"<BBHHH\", 0x01, 11, 0, 3, 0))         # portkit: MIDI is interface 3\n"),
+]
+
+
 def edit_sources(groups):
-    if "pk_ssl" not in groups:
-        return
-    for f, old, new in SSL_EDITS:
+    open(os.path.join(TREE, "src", "pk_groups.h"), "w").write(
+        "/* generated by bb/joebox/build.py: the portkit groups of this build */\n"
+        f"#define PK_HAS_USBIN {int('pk_usbin' in groups)}\n")
+    edits = (SSL_EDITS if "pk_ssl" in groups else []) + (USBIN_EDITS if "pk_usbin" in groups else [])
+    for f, old, new in edits:
         p = os.path.join(TREE, f)
         s = open(p).read()
         assert s.count(old) == 1, f"JOEBOX source changed: {f}: {old[:60]!r}"
