@@ -401,54 +401,18 @@ int clip_last_count(const uint8_t *pad)
 
 
 /* ============================================ WSOLA (decision and setup here, the render in bank 2) ============ */
-#define SLOT0     0x30
-#define SLOT_SIZE 0x70
-#define SLOT_FRAC 0x1c
-#define GRAINS ((volatile struct grains *)PK_GRAINS)
 _Static_assert(64 * sizeof(struct grains) <= 0xa00, "grain states: SRAM4 0x38000400-0x38000dff");
 
-static volatile struct grains *slot_grains(const uint8_t *pad, const float *frac)
-{
-    const uint8_t *slot = (const uint8_t *)frac - SLOT_FRAC;
-    int si = (int)(slot - pad - SLOT0) / SLOT_SIZE;
-    uint32_t id = *(const uint32_t *)(pad + 0x18);
-    unsigned row = (id >> 8) & 0xff, col = id & 0xff;
-    if (si < 0 || si > 3 || row > 3 || col > 3)
-        return 0;
-    return &GRAINS[(row * 4 + col) * 4 + si];
-}
-
-/* pk_clip_entry (pk_thunk.S, at the reader call 0x08066622): 1 = our smooth render, 0 = on to clip_read_b */
+/* pk_clip_entry (pk_thunk.S, at the reader call 0x08066622): 1 = our smooth render, 0 = on to clip_read_b. Bank 2
+   decides (pk_smooth_decide: the checks, the slot's grains, Str Mode / Auto); bank 1 adds its readers and the speed */
 int pk_smooth_wants(const uint8_t *pad, float *frac, const int32_t *srcbuf, float rate)
 {
-    if (!pad || pad[PAD_SLICED] || !pad[PAD_SYNCED] || !(rate > 0.0f) || !srcbuf || *srcbuf < 8)
-        return 0;
-    float seglen = *(const float *)(pad + PAD_SEGLEN), unit = *(const float *)(pad + PAD_UNITOUT);
-    if (!(unit > 1.0f) || !(seglen > 1.0f))
-        return 0;
-    volatile struct grains *g = slot_grains(pad, frac);
-    if (!g)
-        return 0;
-    unsigned mode = pad_setting(pad, P_SMODE);
-    int want;
-    if (mode == 1)
-        want = 0;
-    else if (mode == 2)
-        want = 1;
-    else {
-        int st = (int)pad_setting(pad, P_STRETCH);
-        uint32_t now = pk_now16();
-        /* Auto stays smooth while the slot keeps playing smoothly (no switch when Stretch crosses 0) */
-        want = (st != 0 && st >= -100 && st <= 100)
-            || (g->magic == PK_GMAGIC && ((now - (g->has_old >> 16)) & 0xffffu) < PK_GAP16);
-    }
-    if (!want || !b2_live())
+    if (!b2_live() || !pk_smooth_decide(pad, frac, srcbuf, rate))
         return 0;
     volatile struct pk_wctx *w = PK_WCTX;
     w->read1 = clip_read1;
     w->read2 = clip_read2;
     w->speed = clip_stretch_speed(pad);
-    w->g = g;
     return 1;
 }
 
@@ -458,12 +422,27 @@ int pk_smooth_wants(const uint8_t *pad, float *frac, const int32_t *srcbuf, floa
 /* thunks fx3_send_a / _b at the FX2 gain loads: scratch x FX3 gain into the accumulator (bank 2) */
 void fx3_send(uint8_t *scratch, const uint8_t *pad)
 {
-    int v = (int)pad_setting(pad, P_FX3SEND);
-    if (v <= 0 || PK_F3->magic != PK_F3MAGIC || !b2_live())
-        return;
-    float g = fw_send_curve((float)(v > 1000 ? 1000 : v) * 0.001f);
-    if (g > 0.0f)
-        pk_fx3_add(scratch, g);
+    if (b2_live())
+        pk_fx3_send(scratch, pad);                      /* bank 2 reads the send and applies the curve */
+}
+
+/* performance macros (JOEBOX duck.c / solo.c call these, build.py MACRO_EDITS); the work is in bank 2 */
+void macro_tick(uint8_t *engine, float dt)
+{
+    if (b2_live())
+        pk_macro_tick(engine, dt);
+}
+
+void macro_click(uint8_t *view, unsigned k)
+{
+    if (b2_live())
+        pk_macro_click(view, k);
+}
+
+void macro_lights(uint8_t *view)
+{
+    if (b2_live())
+        pk_macro_lights(view);
 }
 
 /* replaces the block function's "bus 0 += bus 0xb" (bl 0x0804da6c at 0x08053516): that, then the FX sum and FX3 */

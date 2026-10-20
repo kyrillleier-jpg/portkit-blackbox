@@ -693,4 +693,57 @@ e.call(SYM["usbin_open"], 0)
 lc, _ = pad_block()
 check("pad Input USB with the stream closed: the pad plays its voices only", max(abs(a - 0.1) for a in lc) < 1e-7)
 
+# --- performance macros MAC1..MAC4: sources in the modulation list, buttons on the Pads screen, values in the engine
+src = entry(0x53)
+snames = [e.cstr(e.r32(src[3] + 4 * k)) for k in range(src[4])]
+codes = [e.r16(SYM["duck_source_codes"] + 2 * k) for k in range(20)]
+check("modulation Source list: 20 entries, MAC1..MAC4 last with the engine's mod5..mod8 (codes 0x13..0x16)",
+      src[4] == 20 and snames[16:] == ["MAC1", "MAC2", "MAC3", "MAC4"] and codes[16:] == [0x13, 0x14, 0x15, 0x16],
+      (src[4], snames[12:], [hex(c) for c in codes[12:]]))
+ENG = e.new(0xE000)
+VIEW, BTNS = e.new(0x2C00), e.new(0x300)
+e.w32(VIEW + 0x2B5C, BTNS)                              # the button panel; knob position 0 = macros
+e.w32(VIEW + 0x2B6C, 0)
+lit = {}
+e.stub(0x080A3E00, lambda uc: lit.__setitem__(uc.reg_read(UC_ARM_REG_R0) - BTNS, uc.reg_read(UC_ARM_REG_R1)))
+e.w32(0x38003F40, 0)                                    # a boot: no macro state yet
+MOD5 = [0xD71C, 0xD6B8, 0xD654, 0xD5F0]
+
+
+def macro_vals():
+    return [struct.unpack("<f", bytes(e.mu.mem_read(ENG + o, 4)))[0] for o in MOD5]
+
+
+def mtick_dt(ms):
+    from unicorn.arm_const import UC_ARM_REG_S0
+    e.mu.reg_write(UC_ARM_REG_S0, struct.unpack("<I", struct.pack("<f", ms))[0])
+    e.call(SYM["macro_tick"], ENG)
+    return macro_vals()
+
+
+check("at boot all four macros are off: the engine's mod5..mod8 read 0", mtick_dt(2.6667) == [0.0] * 4)
+live[0] = 0
+e.call(SYM["macro_click"], VIEW, 0)
+check("without bank 2 a macro button does nothing", mtick_dt(2.6667) == [0.0] * 4)
+live[0] = 1
+lit.clear()
+e.call(SYM["macro_click"], VIEW, 0)
+check("MAC1 pressed: its button lights (the top one), the others stay dark",
+      lit == {0x34: 1, 0xD4: 0, 0x174: 0, 0x214: 0}, lit)
+v = [mtick_dt(2.6667)[0] for _ in range(12)]
+check(f"MAC1 glides to 1 in 30 ms on mod5 (after 1 block {v[0]:.3f}, after 11 blocks {v[10]:.3f}), the others stay 0",
+      abs(v[0] - 2.6667 / 30) < 1e-4 and v[10] < 1.0 and v[11] == 1.0 and macro_vals()[1:] == [0.0] * 3, v)
+e.call(SYM["macro_click"], VIEW, 2)
+e.call(SYM["macro_click"], VIEW, 0)
+for _ in range(12):
+    vals = mtick_dt(2.6667)
+check("MAC1 off again glides back to 0; MAC3 on reaches 1; lights follow", vals == [0.0, 0.0, 1.0, 0.0]
+      and lit == {0x34: 0, 0xD4: 0, 0x174: 1, 0x214: 0}, (vals, lit))
+e.w32(VIEW + 0x2B6C, 2)
+lit.clear()
+e.call(SYM["macro_click"], VIEW, 1)
+check("on another knob position a macro still toggles, but no button light is touched", lit == {})
+e.call(SYM["macro_click"], VIEW, 1)
+e.unstub(0x080A3E00)
+
 done()

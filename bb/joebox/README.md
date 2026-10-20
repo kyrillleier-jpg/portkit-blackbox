@@ -19,6 +19,9 @@ load readout, …). Added by portkit (same as 3.1.n+pk3, see `bb/README.md`):
   stereo 24 bit / 48 kHz (endpoint 3, isochronous OUT, adaptive); the record source takes it rate-matched (PI loop,
   Hermite interpolation, 8 ms buffer). Build-time edits of JOEBOX's `usbdev.c` and `test_usbdev.py`: `USBIN_EDITS`
   in `build.py`. Details: `re/blackbox.md` "Rec Input: USB". Not tested on a unit yet.
+- **Performance macros MAC1–MAC4** (group `pk_macro`, needs JOEBOX's duck and solo): four toggle buttons in the Pads
+  screen's right column (position 0 of the lower-right knob; the Velocity slider moves to position 3), modulation
+  sources MAC1–MAC4 = the engine's mod5–mod8 (`MACRO_EDITS` in `build.py`, details `re/blackbox.md`).
 - Version on splash and Tools: **JB1+pk** (JOEBOX allows eight characters).
 - Every feature group can be switched off: `bb/joebox/features.py`, `build.py --groups`, the dashboard
   (`python3 bb/joebox/dashboard.py` → http://127.0.0.1:8765).

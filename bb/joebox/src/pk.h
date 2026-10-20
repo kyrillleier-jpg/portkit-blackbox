@@ -146,4 +146,22 @@ void pk_usbin_fill(int n);               /* bank 2, task: n rate-matched frames 
                                             (once per audio block; a second call in the same block reuses it) */
 void pk_usbin_add(float *l, float *r, int n);   /* bank 2, task: the block added into a pad's mix (live input) */
 
+/* --- performance macros MAC1..MAC4 (pk_macro): four toggle buttons on the Pads screen (JOEBOX solo.c's button panel,
+   position 0 of the lower-right knob), modulation sources for the stock matrix: engine sources mod5..mod8 (codes
+   0x13..0x16, saved as "mod5".."mod8"), value = engine object + 4 (FUN_080519e0's table, re/blackbox.md) ---------- */
+struct pk_macro {               /* SRAM4 */
+    uint32_t magic;
+    uint8_t on[4];              /* the buttons */
+    float value[4];             /* 0..1, glides to on[] in MACRO_MS */
+};
+#define PK_MACRO ((volatile struct pk_macro *)0x38003f40u)   /* .. 0x38003f57 */
+#define PK_MMAGIC 0x4d414331u   /* "MAC1" */
+#define ID_MAC1 0x1f4           /* the buttons' message ids 0x1f4..0x1f7 (JOEBOX: 0x1f1..0x1f3 MUTE / SOLO / blank) */
+void pk_macro_tick(uint8_t *engine, float dt_ms);   /* bank 2, audio task: glide, values into the engine */
+void pk_macro_click(uint8_t *view, unsigned k);    /* bank 2, screen: toggle macro k, button lights */
+void pk_macro_lights(uint8_t *view);               /* bank 2, screen */
+void pk_fx3_send(uint8_t *scratch, const uint8_t *pad);  /* bank 2: a pad's FX3 send into the accumulator */
+int pk_smooth_decide(const uint8_t *pad, float *frac, const int32_t *srcbuf, float rate);  /* bank 2: Smooth
+                              stretch for this slot? sets PK_WCTX->g (bank 1 adds readers and speed) */
+
 #endif

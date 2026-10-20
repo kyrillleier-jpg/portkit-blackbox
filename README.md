@@ -46,6 +46,7 @@ Added by portkit (tested on a unit, except where noted):
 | **Record the effects only**: Rec Input **FX** records just the FX1 + FX2 + FX3 returns, in stereo | record screen → Rec Input |
 | **Sends kept while recording**: a pad's FX1 / FX2 / FX3 send settings no longer reset when it is recorded into | recording to a pad |
 | **Record from the computer**: Rec Input **USB** records what the computer plays to the Blackbox over USB, stereo, 24 bit / 48 kHz; monitored like an input | record screen → Rec Input; computer on the power jack |
+| **Performance macros MAC1–MAC4** (new, not yet tested on a unit): four toggle buttons on the Pads screen where the Velocity slider was; as modulation sources MAC1–MAC4 one button moves any number of parameters at once | Pads screen, right; Pad → modulation slot → Source MAC1–4 |
 | **The computer through a pad** (new, not yet tested on a unit): pad Input **USB** plays the computer's stream through that pad all the time, with its insert, level, pan, sends and the master FX | Pad → Conf → Input: USB |
 
 Signal order on the main output: pads (with inserts) → FX1 / FX2 returns → FX3 → distortion → Master FX →
@@ -60,6 +61,14 @@ screen set Rec Input to **USB** and record as usual. The Blackbox follows the co
 by itself), so nothing else has to be set. While nothing comes from the computer, USB records silence. With the
 record screen's monitor on you hear it through the Blackbox (about 8 ms behind the computer). Computers that saw an older build may need the device unplugged and plugged in
 again to notice the new output.
+
+**Performance macros:** the Pads screen's right-hand column now starts with four buttons MAC1–MAC4 (the lower-right
+knob still steps through the other panels: clipboard, MUTE / SOLO, and the Velocity slider, now the fourth position).
+To set a macro up, open a pad's modulation, pick **MAC1** (… MAC4) as the Source, a Destination (Level, Filter,
+Pitch, a send, …) and an Amount: that is where the parameter goes while the macro is on. Use as many slots and pads as
+you like with the same macro, so one button can, say, close two filters, raise a send and drop a pad's level
+together. Tapping the button switches the macro on (lit) or off; it glides there in about 30 ms. The routing is saved
+with the preset (as the engine's sources mod5–mod8); the on/off state is not, all macros start off.
 
 **The computer through a pad:** on a pad's Conf page set Input to **USB** (next to JOEBOX's In 1 / In 2 / In 1+2).
 The computer's sound then runs through that pad like a live input: its insert, Level, Pan, FX sends, output and the
@@ -104,7 +113,7 @@ bit-identical to the bitbox micro's.
 .venv/bin/python -I bb/joebox/dashboard.py       # -> http://127.0.0.1:8765
 ```
 
-Lists every change against stock (JOEBOX's and portkit's, 51 rows in `bb/joebox/features.py`) with a checkbox per
+Lists every change against stock (JOEBOX's and portkit's, 52 rows in `bb/joebox/features.py`) with a checkbox per
 group, builds the selection, runs the checks and offers both files. Groups marked *fest* (fixed) are JOEBOX parts the
 rest depends on. Runs on your machine only (it needs the firmware). The UI is German. Only the complete build goes
 through the full test suite.

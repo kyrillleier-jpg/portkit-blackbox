@@ -170,11 +170,80 @@ USBIN_EDITS = [
 ]
 
 
+# Performance macros MAC1..MAC4 (pk_macro, needs JOEBOX's duck and solo). duck.c: four more modulation sources (engine
+# mod5..mod8, codes 0x13..0x16; the Source list 16 -> 20 in its four places) and their values each block; solo.c: the
+# Pads screen's lower-right knob gets a fourth position: 0 = the macro buttons (where the Velocity slider was), 1 =
+# clipboard, 2 = MUTE / SOLO, 3 = the Velocity slider.
+MACRO_EDITS = [
+    ("src/duck.c", "void insert_tick(void);          /* insert.c: one pad's insert settings per block */\n",
+     "void insert_tick(void);          /* insert.c: one pad's insert settings per block */\n"
+     "void macro_tick(uint8_t *engine, float dt);   /* portkit pk_main.c: performance macros MAC1..MAC4 */\n"),
+    ("src/duck.c", "    lfo_tick(now);\n", "    macro_tick(engine, dt);\n    lfo_tick(now);\n"),
+    ("src/duck.c", "const char *const duck_source_names[16] = {", "const char *const duck_source_names[20] = {"),
+    ("src/duck.c", '    "EXP1", "EXP2", "PUMP", "LINR",\n',
+     '    "EXP1", "EXP2", "PUMP", "LINR",\n    "MAC1", "MAC2", "MAC3", "MAC4",              /* portkit: performance macros */\n'),
+    ("src/duck.c", "const uint16_t duck_source_codes[16] = {", "const uint16_t duck_source_codes[20] = {"),
+    ("src/duck.c", "    0x12, 0x11, 0x10, 0xf,                       /* mod4, mod3, mod2, mod1 */\n",
+     "    0x12, 0x11, 0x10, 0xf,                       /* mod4, mod3, mod2, mod1 */\n"
+     "    0x13, 0x14, 0x15, 0x16,                      /* portkit: mod5..mod8 = MAC1..MAC4 */\n"),
+    ("patches/duck.py", 'bytes.fromhex("10210091")),', 'bytes.fromhex("14210091")),  # portkit: 20 (MAC1..4)'),
+    ("patches/duck.py", 'bytes.fromhex("102b")),', 'bytes.fromhex("142b")),  # portkit: 20'),
+    ("patches/duck.py", 'bytes.fromhex("1020")),', 'bytes.fromhex("1420")),  # portkit: 20'),
+    ("patches/solo.py", 'bytes.fromhex("0321")),', 'bytes.fromhex("0421")),  # portkit: 4 positions (+ macros)'),
+    ("src/solo.c", "#define ID_BLANK 0x1f3\n",
+     "#define ID_BLANK 0x1f3\n#define ID_MAC1  0x1f4  /* portkit: 0x1f4..0x1f7 = MAC1..MAC4 */\n"
+     "void macro_click(uint8_t *view, unsigned k);   /* portkit pk_main.c */\nvoid macro_lights(uint8_t *view);\n"
+     "void pads_panels(uint8_t *view);\n"),
+    ("src/solo.c", "    unsigned id = msg[6];\n",
+     "    unsigned id = msg[6];\n"
+     "    if (id >= ID_MAC1 && id < ID_MAC1 + 4) {                /* portkit: a macro button */\n"
+     "        if (msg[0] == 2)\n            macro_click(view, id - ID_MAC1);\n        return 0;\n    }\n"),
+    ("src/solo.c", "    fw_pads_msg(view, msg);\n",
+     "    fw_pads_msg(view, msg);\n"
+     "    if (msg && msg[0] == 0x67)                               /* portkit: the screen is shown: its panel as set */\n"
+     "        pads_panels(view);\n"),
+    ("src/solo.c", "    if (pos > 0)\n", "    if (pos != 3)                                            /* portkit: 3 = the slider */\n"),
+    ("src/solo.c", "            fw_label(b, pos == 2 ? mute[k] : clip[k]);\n"
+                   "            *(uint32_t *)(b + BTN_ID) = pos == 2 ? mute_id[k] : clip_id[k];\n",
+     "            static const char *const mac[4] = {\"MAC4\", \"MAC3\", \"MAC2\", \"MAC1\"};   /* portkit: btn_at[0] is the\n"
+     "                                                     bottom one on the glass (Renode), so MAC1 goes on top */\n"
+     "            fw_label(b, pos == 0 ? mac[k] : pos == 2 ? mute[k] : clip[k]);\n"
+     "            *(uint32_t *)(b + BTN_ID) = pos == 0 ? ID_MAC1 + 3u - (unsigned)k : pos == 2 ? mute_id[k] : clip_id[k];\n"),
+    # his tests: 20 sources, four knob positions (0 = macros, 3 = the slider), SRAM4 for the macro state
+    ("test_duck.py", 'check("the three list-length patches say 16", img[0x0808CB3E - BASE] == 0x10 and img[0x080B67CC - BASE] == 0x10 and img[0x080B7994 - BASE] == 0x10)',
+     'check("the three list-length patches say 20 (portkit: + MAC1..MAC4)", img[0x0808CB3E - BASE] == 0x14 and img[0x080B67CC - BASE] == 0x14 and img[0x080B7994 - BASE] == 0x14)'),
+    ("test_duck.py", "e.uc.mem_map(0x38800000, 0x1000)                         # backup SRAM + its clock: lfo.c looks for its memory there\n",
+     "e.uc.mem_map(0x38800000, 0x1000)                         # backup SRAM + its clock: lfo.c looks for its memory there\n"
+     "e.uc.mem_map(0x38000000, 0x10000)                        # portkit: SRAM4 (macro state)\n"),
+    ("test_duck.py", 'check("the three list counts are 16", img[0x0808CB3E - BASE:0x0808CB40 - BASE] == bytes.fromhex("1021") and img[0x080B67CC - BASE:0x080B67CE - BASE] == bytes.fromhex("102b")\n'
+                     '      and img[0x080B7994 - BASE:0x080B7996 - BASE] == bytes.fromhex("1020"))',
+     'check("the three list counts are 20 (portkit)", img[0x0808CB3E - BASE:0x0808CB40 - BASE] == bytes.fromhex("1421") and img[0x080B67CC - BASE:0x080B67CE - BASE] == bytes.fromhex("142b")\n'
+     '      and img[0x080B7994 - BASE:0x080B7996 - BASE] == bytes.fromhex("1420"))'),
+    ("test_solo.py", "uc.mem_map(0x24000000, 0x80000)\n", "uc.mem_map(0x24000000, 0x80000)\nuc.mem_map(0x38000000, 0x10000)   # portkit: SRAM4 (macro state)\n"),
+    ("test_solo.py", 'check("the column stepper has three positions", IMG[0x080B4704 - BASE:0x080B4706 - BASE] == bytes.fromhex("0321"))',
+     'check("the column stepper has four positions (portkit: + macros)", IMG[0x080B4704 - BASE:0x080B4706 - BASE] == bytes.fromhex("0421"))'),
+    ("test_solo.py", 'check("position 0: Velocity slider shown, buttons hidden, nothing relabelled", c == [("hide", SLIDER, 0), ("hide", BUTTONS, 1)], c)\n'
+                     'check("...and no button left lit", lit == {0x214: 0, 0x174: 0}, lit)',
+     'check("position 0 (portkit): buttons read MAC4..MAC1 in panel order (MAC1 on top), ids 0x1f7..0x1f4, slider hidden, panel shown",\n'
+     '      [x[2] for x in c if x[0] == "label"] == ["MAC4", "MAC3", "MAC2", "MAC1"] and ids() == [0x1F7, 0x1F6, 0x1F5, 0x1F4]\n'
+     '      and [x for x in c if x[0] == "hide"] == [("hide", SLIDER, 1), ("hide", BUTTONS, 0)], (c, ids()))\n'
+     'check("...and no button left lit", lit and all(v == 0 for v in lit.values()), lit)\n'
+     'c = r6_call(3)\n'
+     'check("position 3 (portkit): Velocity slider shown, buttons hidden, nothing relabelled", c == [("hide", SLIDER, 0), ("hide", BUTTONS, 1)], c)'),
+    ("src/solo.c", "    pads_lights(view);\n    (*(hide_fn *)(*(uint8_t **)slider + 0x2c))(slider, pos != 0);\n"
+                   "    (*(hide_fn *)(*(uint8_t **)buttons + 0x2c))(buttons, pos == 0);\n",
+     "    pads_lights(view);\n    if (pos == 0)\n        macro_lights(view);                                  /* portkit */\n"
+     "    (*(hide_fn *)(*(uint8_t **)slider + 0x2c))(slider, pos != 3);\n"
+     "    (*(hide_fn *)(*(uint8_t **)buttons + 0x2c))(buttons, pos == 3);\n"),
+]
+
+
 def edit_sources(groups):
     open(os.path.join(TREE, "src", "pk_groups.h"), "w").write(
         "/* generated by bb/joebox/build.py: the portkit groups of this build */\n"
         f"#define PK_HAS_USBIN {int('pk_usbin' in groups)}\n")
-    edits = (SSL_EDITS if "pk_ssl" in groups else []) + (USBIN_EDITS if "pk_usbin" in groups else [])
+    edits = ((SSL_EDITS if "pk_ssl" in groups else []) + (USBIN_EDITS if "pk_usbin" in groups else [])
+             + (MACRO_EDITS if "pk_macro" in groups else []))
     for f, old, new in edits:
         p = os.path.join(TREE, f)
         s = open(p).read()

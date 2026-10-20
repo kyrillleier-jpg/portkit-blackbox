@@ -1500,3 +1500,122 @@ void pk_usbin_add(float *l, float *r, int n)
             r[i] += b[i];
     }
 }
+
+/* ============================================ FX3 send (bank 1 only gates it) ============================================ */
+typedef float (*pk_curve_fn)(float x);
+#define PK_APP_PADS (0x24020088u + 0x1840u)
+
+static unsigned pk_pad_setting(const uint8_t *pad, unsigned param)
+{
+    if (!pad)
+        return 0;
+    uint32_t id = *(const uint32_t *)(pad + 0x18);
+    unsigned row = (id >> 8) & 0xff, col = id & 0xff;
+    if (row >= 4 || col >= 5)
+        return 0;
+    return (unsigned)((pk_setting_fn)FN(0x08093e9c))((const void *)(PK_APP_PADS + row * 0xf0u + col * 0x30u), param);
+}
+
+void pk_fx3_send(uint8_t *scratch, const uint8_t *pad)
+{
+    int v = (int)pk_pad_setting(pad, P_FX3SEND);
+    if (v <= 0 || PK_F3->magic != PK_F3MAGIC)
+        return;
+    float g = ((pk_curve_fn)FN(0x08060930))((float)(v > 1000 ? 1000 : v) * 0.001f);
+    if (g > 0.0f)
+        pk_fx3_add(scratch, g);
+}
+
+/* ============================================ performance macros ============================================ */
+#define MACRO_MS 30.0f          /* glide: short enough to feel instant, long enough not to click */
+static const uint16_t macro_value[4] = {0xd71c, 0xd6b8, 0xd654, 0xd5f0};   /* mod5..mod8: object + 4 */
+#define PADS_PANELS 0x2b58      /* JOEBOX solo.c: [0] velocity slider, [1] button panel */
+#define PADS_POS    0x2b6c
+static const uint16_t macro_btn[4] = {0x34, 0xd4, 0x174, 0x214};           /* MAC1..MAC4: top to bottom on the glass */
+typedef void (*pk_select_fn)(void *button, int on);
+
+static volatile struct pk_macro *macros(void)
+{
+    volatile struct pk_macro *m = PK_MACRO;
+    if (m->magic != PK_MMAGIC) {                        /* every boot: all off (SRAM keeps old bytes over a reset) */
+        for (int k = 0; k < 4; k++) {
+            m->on[k] = 0;
+            m->value[k] = 0.0f;
+        }
+        m->magic = PK_MMAGIC;
+    }
+    return m;
+}
+
+void pk_macro_tick(uint8_t *engine, float dt_ms)
+{
+    volatile struct pk_macro *m = macros();
+    float step = dt_ms / MACRO_MS;
+    for (int k = 0; k < 4; k++) {
+        float v = m->value[k];
+        v = m->on[k] ? (v + step > 1.0f ? 1.0f : v + step) : (v - step < 0.0f ? 0.0f : v - step);
+        m->value[k] = v;
+        *(volatile float *)(engine + macro_value[k]) = v;
+    }
+}
+
+void pk_macro_lights(uint8_t *view)
+{
+    volatile struct pk_macro *m = macros();
+    uint8_t *buttons = *(uint8_t **)(view + PADS_PANELS + 4);
+    if (!buttons || *(int32_t *)(view + PADS_POS) != 0)
+        return;
+    for (int k = 0; k < 4; k++)
+        ((pk_select_fn)FN(0x080a3e00))(buttons + macro_btn[k], m->on[k]);
+}
+
+void pk_macro_click(uint8_t *view, unsigned k)
+{
+    if (k >= 4)
+        return;
+    volatile struct pk_macro *m = macros();
+    m->on[k] = !m->on[k];
+    pk_macro_lights(view);
+}
+
+/* ============================================ Smooth stretch: does this slot want it (moved from bank 1) ============== */
+#define PAD_SYNCED  0x1f5
+#define PAD_SEGLEN  0x1fc
+#define PAD_UNITOUT 0x204
+#define PAD_SLICED  0x254
+#define SLOT0       0x30
+#define SLOT_SIZE   0x70
+#define SLOT_FRAC   0x1c
+
+int pk_smooth_decide(const uint8_t *pad, float *frac, const int32_t *srcbuf, float rate)
+{
+    if (!pad || pad[PAD_SLICED] || !pad[PAD_SYNCED] || !(rate > 0.0f) || !srcbuf || *srcbuf < 8)
+        return 0;
+    float seglen = *(const float *)(pad + PAD_SEGLEN), unit = *(const float *)(pad + PAD_UNITOUT);
+    if (!(unit > 1.0f) || !(seglen > 1.0f))
+        return 0;
+    const uint8_t *slot = (const uint8_t *)frac - SLOT_FRAC;
+    int si = (int)(slot - pad - SLOT0) / SLOT_SIZE;
+    uint32_t id = *(const uint32_t *)(pad + 0x18);
+    unsigned row = (id >> 8) & 0xff, col = id & 0xff;
+    if (si < 0 || si > 3 || row > 3 || col > 3)
+        return 0;
+    volatile struct grains *g = &((volatile struct grains *)PK_GRAINS)[(row * 4 + col) * 4 + si];
+    unsigned mode = pk_pad_setting(pad, P_SMODE);
+    int want;
+    if (mode == 1)
+        want = 0;
+    else if (mode == 2)
+        want = 1;
+    else {
+        int st = (int)pk_pad_setting(pad, P_STRETCH);
+        uint32_t now = pk_now16();
+        /* Auto stays smooth while the slot keeps playing smoothly (no switch when Stretch crosses 0) */
+        want = (st != 0 && st >= -100 && st <= 100)
+            || (g->magic == PK_GMAGIC && ((now - (g->has_old >> 16)) & 0xffffu) < PK_GAP16);
+    }
+    if (!want)
+        return 0;
+    PK_WCTX->g = g;
+    return 1;
+}

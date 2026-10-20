@@ -203,3 +203,14 @@ RX-FIFO, Interrupt-Last), Verhalten bei abgezogenem Kabel waehrend der Aufnahme.
 | ein Block fuer alle | pk_usbin_fill erzeugt hoechstens einmal pro Audio-Block (DWT-Zyklen, JOEBOX cpu.c schaltet den Zaehler ein; halber Block 500 000 Zyklen bei 399 MHz): Recorder und Pad bekommen dieselben Samples, sonst nimmt jeder jeden zweiten Block | test_jb.py | durch Emulation bestaetigt |
 | Monitor | Rec Input USB: Monitor wie ein Eingang (am Geraet: Aufnahme lief, Mithoeren fehlte -> korrigiert) | Rueckmeldung, test_jb.py | Aufnahme hardware-verified, Monitor durch Emulation bestaetigt |
 
+## Performance-Makros MAC1-MAC4 (pk_macro, 2026-10-20)
+
+| Thema | Befund | Beleg | Status |
+|---|---|---|---|
+| globale Quellen | FUN_080519E0 (Mod-Ziel an Quelle haengen) verzweigt nach Quellcode: Objekt-Offset in der Engine je Code, Wert = Objekt + 4: 0xF 0xD72C, 0x10 0xD6C8, 0x11 0xD664, 0x12 0xD600 (JOEBOX: LINR/PUMP/EXP2/EXP1 - deckt sich mit seinen Werten 0xD730 / 0xD6CC / 0xD668 / 0xD604), **0x13 0xD718, 0x14 0xD6B4, 0x15 0xD650, 0x16 0xD5EC**, 0x17 0xD614 | Disassembly (Sprungtabelle 0x08051A0A) | gelesen, gegen JOEBOX' Werte geprueft |
+| Preset-Namen | Quellnamen der Firmware in Code-Reihenfolge: env1-3, lfo1-4, seq1-4, velocity (0xD), key (0xE), mod1-mod10 (0xF-0x18), pitchbend (0x19) ...: MAC1-4 werden als "mod5"-"mod8" gespeichert | Strings 0x080CCC84 ff. | gelesen |
+| Liste | JOEBOX duck.c: Source-Liste 16 -> 20 (Namen, Codes, drei Zaehler in patches/duck.py) | test_duck.py (angepasst), test_jb.py | durch Emulation bestaetigt |
+| Werte | macro_tick aus duck_block (jeder Block): 30 ms Gleiten auf 0/1, Zustand SRAM4 0x38003F40 (Magic, jeder Boot aus) | test_jb.py | durch Emulation bestaetigt |
+| Knoepfe | JOEBOX solo.c: das rechte Feld des Pads-Bildschirms (Knopf-Panel, btn_at {0x214, 0x174, 0xD4, 0x34} = von UNTEN nach oben, Renode-Bild; sein Kommentar sagt "top to bottom") bekommt Position 0 = MAC1-4 (IDs 0x1F4-0x1F7, MAC1 oben), 1 Clipboard, 2 MUTE/SOLO, 3 Velocity-Slider; Stepper 3 -> 4; beim Zeigen (0x67) wird das Panel der Position angewendet | test_solo.py (angepasst), Renode-Screenshot | durch Emulation bestaetigt |
+| Bank 1 | Logik in Bank 2 (Tick, Klick, Lichter, ohne Bank 2 kein Makro); dafuer auch fx3_send und die Smooth-Entscheidung (pk_smooth_decide) nach Bank 2: 184 Byte frei | Build | - |
+
