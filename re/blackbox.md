@@ -164,3 +164,8 @@ JOEBOX' 30 Testsuiten laufen auf dem zusammengefuehrten Baum gruen (numpy, scipy
 Aufnahme mit Rec Input FX im Renode: Aufnahme laeuft, die SD-Schreibzugriffe kommen im Sim nicht an ("SD writes 0") -
 der geschriebene Clip ist dort nicht pruefbar. Offen fuer das Geraet.
 
+
+### Hardware-Test JB1+pk (2026-10-20)
+
+Alle portkit-Funktionen des Voll-Builds (Master-Distortion, FX3, Clip Shift / Play Len / Stretch / Loop Fade, Sync 1/32,
+SSL-Kompressor, Rec Input FX, Sends bei Aufnahme) am Geraet getestet (Rueckmeldung): **hardware-verified**.
