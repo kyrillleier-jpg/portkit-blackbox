@@ -1,9 +1,12 @@
 # Third-party code
 
-## blackbox-mod (Justin Joe)
+## blackbox-mod / JOEBOX (Justin Joe)
 
-`src/filter.c` and the BL encoder in `patches/thumb.py` are ported from
-[j3threejay/blackbox-mod](https://github.com/j3threejay/blackbox-mod) (Blackbox 3.1.9), MIT licence:
+[j3threejay/blackbox-mod](https://github.com/j3threejay/blackbox-mod), MIT licence. This repository does **not**
+contain its sources: the builds export a pinned commit from your own clone (`repos/blackbox-mod`, see `setup.sh`),
+apply small scripted edits listed in `bb/joebox/build.py` (`SSL_EDITS`: a ninth compressor model, its page, and the
+matching expectation in its `test_comp.py`), and compile it together with ours. The BL encoder in
+`patches/thumb.py` is ported from it. Several hook sites and addresses follow its findings, credited where used.
 
 ```
 MIT License
@@ -29,11 +32,10 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-## stmlib (Emilie Gillet)
-
-The state-variable filter in `src/filter.c` follows `stmlib/dsp/filter.h` (class `Svf`), Copyright 2014 Emilie Gillet,
-MIT licence.
+Built images contain JOEBOX code; when you share a built image, its MIT notice applies to that part. Built images
+also contain 1010music's firmware, which you may not be allowed to redistribute: share the build instructions, not
+the images.
 
 ## 1010music firmware
 
-Not included and not licensed here. The patcher needs your own copy of the stock `MICRO.BIN` 2.3.4 in `firmware/`.
+Not included and not licensed here. The build needs your own copy of the stock `BLACKBOX.bin` 3.1.9 in `firmware/`.
