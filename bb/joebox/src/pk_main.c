@@ -426,6 +426,20 @@ void fx3_send(uint8_t *scratch, const uint8_t *pad)
         pk_fx3_send(scratch, pad);                      /* bank 2 reads the send and applies the curve */
 }
 
+/* --- Out 3 can mirror the headphones (pk_hpout3): Out 3 Vol goes one step past 100 % (1010) and there Out 3 plays
+   the headphone mix (JOEBOX usbdev.c's usbaud_tap hands it to the converter in Out 3's place, build.py HPOUT3_EDITS;
+   USB 5-6 stay the real Out 3) */
+#define P_OUT3VOL 0xbd
+void out3_register(void *table, int param, int type, const char *label, int min, int max, const char *xml)
+{
+    fw_register_num(table, param, type, label, min, param == P_OUT3VOL ? 1010 : max, xml);   /* 0x0808d51c */
+}
+
+int out3_mirror(void)
+{
+    return fw_setting(SETTINGS, P_OUT3VOL) > 1000;
+}
+
 /* performance macros (JOEBOX duck.c / solo.c call these, build.py MACRO_EDITS); the work is in bank 2 */
 void macro_tick(uint8_t *engine, float dt)
 {

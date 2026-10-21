@@ -781,4 +781,26 @@ e.mu.hook_del(hd2)
 check("warm reset: a pad's FX3 send and the next block switch the D2 SRAM clocks on before touching it",
       not cold and e.r32(RCC_AHB2ENR) >> 29 == 7, (first_send, cold[:5]))
 
+# --- Out 3 mirrors the headphones above 100 % (pk_hpout3)
+vols = {pid: entry(pid) for pid in (0xBA, 0xBB, 0xBC, 0xBD)}
+check("Out 3 Vol registered up to 101 % (1010); Headphone, Out 1 and Out 2 Vol still end at 100 %",
+      vols[0xBD][6] == 1010 and all(vols[p][6] == 1000 for p in (0xBA, 0xBB, 0xBC)),
+      {hex(p): v[5:7] for p, v in vols.items()})
+dac = []
+e.stub(0x0806002C, lambda uc: dac.append(uc.reg_read(UC_ARM_REG_R1)))
+HA, HB, HC, HDST = e.new(4 * N), e.new(4 * N), e.new(4 * N), e.new(16 * N)
+
+
+def tap(out3vol):
+    e.call(STORE_SET, SETTINGS, 0xBD, out3vol)
+    dac.clear()
+    e.call(SYM["usbaud_tap"], HA, HB, HC, N, stack=(HDST, 4))
+    return dac[0]
+
+
+check("Out 3 Vol 100 %: the converter gets Out 3's own bus; 101 %: the headphone mix in its place",
+      tap(1000) == HB and tap(1010) == HA and tap(500) == HB, [hex(tap(v)) for v in (1000, 1010)])
+e.unstub(0x0806002C)
+e.call(STORE_SET, SETTINGS, 0xBD, 1000)
+
 done()

@@ -38,6 +38,7 @@ GROUPS = {
     "pk_fxrec":   ("Aufnahmequelle FX", "portkit", False, []),
     "pk_usbin":   ("Aufnahmequelle USB", "portkit", False, ["pk_fxrec"]),
     "pk_macro":   ("Performance-Makros", "portkit", False, ["duck", "solo"]),
+    "pk_hpout3":  ("Kopfhörer auf Out 3", "portkit", False, []),
 }
 
 # (group, feature, where on the unit, what it does)
@@ -91,6 +92,7 @@ FEATURES = [
     ("pk_ssl", "Kompressor-Modell SSL", "Tools > Compressor: SSL, INFO = Regler", "SSL-Buskompressor: Thresh, Ratio 2/4/10, Attack 0,1..30 ms, Release 0,1..1,2 s / Auto, Gain, Mix (Bank 2)"),
     ("pk_recsends", "Sends bleiben bei Aufnahme", "Aufnahme auf ein Pad", "FX1/FX2/FX3 Send des Pads werden beim Neuanlegen während der Aufnahme nicht zurückgesetzt"),
     ("pk_fxrec", "Rec Input: FX", "Record-Bildschirm > Rec Input", "Nimmt nur die Effekt-Rückwege auf (FX1 + FX2 + FX3), stereo (Bank 2)"),
+    ("pk_hpout3", "Kopfhörer auf Out 3", "Tools > Out 3 Vol über 100 % drehen (101 %)", "Out 3 spielt dann den Kopfhörer-Mix; USB-Kanäle 5–6 bleiben das echte Out 3"),
     ("pk_macro", "Performance-Makros MAC1–MAC4", "Pads-Bildschirm, rechts (statt Velocity-Slider; der liegt jetzt auf der 4. Reglerposition)", "Vier Umschalt-Knöpfe; als Quellen MAC1–MAC4 in der Modulation: ein Makro steuert über die Mod-Slots beliebig viele Parameter auf ihren Amount, 30 ms Gleiten (Bank 2)"),
     ("pk_usbin", "Live-Input USB auf einem Pad", "Pad > Conf > Input: USB", "Der Ton vom Computer läuft dauerhaft durch ein Pad: Insert, Pegel, Pan, Sends, Mixer, Master FX (Bank 2)"),
     ("pk_usbin", "Rec Input: USB", "Record-Bildschirm > Rec Input; Computer an der Netzbuchse", "Nimmt Audio vom Computer auf: zweites USB-Audio-Gerät „Blackbox“ (Ausgang des Computers), stereo, 24 bit / 48 kHz (Bank 2)"),

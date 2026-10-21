@@ -46,6 +46,7 @@ Added by portkit (tested on a unit, except where noted):
 | **Record the effects only**: Rec Input **FX** records just the FX1 + FX2 + FX3 returns, in stereo | record screen → Rec Input |
 | **Sends kept while recording**: a pad's FX1 / FX2 / FX3 send settings no longer reset when it is recorded into | recording to a pad |
 | **Record from the computer**: Rec Input **USB** records what the computer plays to the Blackbox over USB, stereo, 24 bit / 48 kHz; monitored like an input | record screen → Rec Input; computer on the power jack |
+| **Headphones on Out 3** (new, not yet tested on a unit): turn Out 3 Vol one step past 100 % (to 101 %) and Out 3 plays the headphone mix; USB channels 5–6 stay the real Out 3 | Tools → Out 3 Vol |
 | **Performance macros MAC1–MAC4** (new, not yet tested on a unit): four toggle buttons on the Pads screen where the Velocity slider was; as modulation sources MAC1–MAC4 one button moves any number of parameters at once | Pads screen, right; Pad → modulation slot → Source MAC1–4 |
 | **The computer through a pad** (new, not yet tested on a unit): pad Input **USB** plays the computer's stream through that pad all the time, with its insert, level, pan, sends and the master FX | Pad → Conf → Input: USB |
 
@@ -114,7 +115,7 @@ bit-identical to the bitbox micro's.
 .venv/bin/python -I bb/joebox/dashboard.py       # -> http://127.0.0.1:8765
 ```
 
-Lists every change against stock (JOEBOX's and portkit's, 52 rows in `bb/joebox/features.py`) with a checkbox per
+Lists every change against stock (JOEBOX's and portkit's, 53 rows in `bb/joebox/features.py`) with a checkbox per
 group, builds the selection, runs the checks and offers both files. Groups marked *fest* (fixed) are JOEBOX parts the
 rest depends on. Runs on your machine only (it needs the firmware). The UI is German. Only the complete build goes
 through the full test suite.

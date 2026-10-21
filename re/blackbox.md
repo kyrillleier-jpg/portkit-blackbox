@@ -229,3 +229,12 @@ gesetzt, Speicher-Hook auf D2 - alter Build schlaegt fehl (Zugriffe ab 0x3004400
 Status: **hardware-verified** (b437d833 bootet nach dem Bank-2-Neustart, Rueckmeldung 2026-10-21).
 Diagnose-Build (build.py --diag, JOEBOX FAULT_SHOW) passt nicht in Bank 1 (568 Byte zu viel; JOEBOX kompiliert immer
 alle Quellen, Gruppen sparen keinen Code).
+
+## Kopfhoerer auf Out 3 (pk_hpout3, 2026-10-21)
+
+| Thema | Befund | Beleg | Status |
+|---|---|---|---|
+| Busse | FUN_0806002c(a, b, c, ...) wandelt drei Stereo-Busse fuer den Wandler: a = Kopfhoerer-Mix, b = Out 3, c = Out 1 (JOEBOX usbdev.c, aus Aufnahmen); JOEBOX' usbaud_tap haengt dort | usbdev.c | gelesen |
+| Schalter | Out 3 Vol (0xBD, Prozent 0..1000) wird nach unserem Registrierungsblock registriert (Aufruf 0x0808D51C, Index 152 > 131): dieser Aufruf geht an out3_register, das nur fuer 0xBD max 1010 setzt; > 1000 = Spiegeln | Unicorn-Lauf der Registrierung, test_jb.py | durch Emulation bestaetigt |
+| Spiegeln | usbaud_tap: fw_to_dac(a, out3_mirror() ? a : b, c, ...); der USB-Ring bekommt weiter b (USB 5-6 = echtes Out 3) | test_jb.py (Wandler-Argument) | durch Emulation bestaetigt |
+
