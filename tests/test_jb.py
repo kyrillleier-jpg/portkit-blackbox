@@ -746,4 +746,39 @@ check("on another knob position a macro still toggles, but no button light is to
 e.call(SYM["macro_click"], VIEW, 1)
 e.unstub(0x080A3E00)
 
+# --- warm reset (the bank 2 loader's restart, a watchdog reset): the RCC is cleared, SRAM4 and FX3's magic are not.
+# Every access to D2 SRAM must find its clocks on (on 2026-10-21 the unit faulted there after each restart: boot loop).
+from unicorn import UC_HOOK_MEM_WRITE  # noqa: E402
+RCC_AHB2ENR = 0x580244DC
+cold = []
+
+
+def d2_watch(uc, access, addr, size, value, data):
+    if struct.unpack("<I", bytes(uc.mem_read(RCC_AHB2ENR, 4)))[0] >> 29 != 7:
+        cold.append(hex(addr))
+
+
+A2, LA2, RA2 = e.new(0x28), e.new(4 * N), e.new(4 * N)
+fill(A2, LA2, RA2, [0.25] * N)
+fill(A2 + 20, e.new(4 * N), e.new(4 * N), [0.5] * N)
+fill(B0, L0, R0, [0.0] * N)
+e.call(SYM["fx3_master"], B0, A2 + 20)                  # FX3 set up (its magic in SRAM4)
+check("before the reset: FX3 set up", e.r32(0x38000E00) == 0x46583342)
+hd2 = e.mu.hook_add(UC_HOOK_MEM_READ | UC_HOOK_MEM_WRITE, d2_watch, begin=0x30000000, end=0x30047FFF)
+e.w32(RCC_AHB2ENR, 0)                                   # the reset: D2 SRAM clocks off, the magic still there
+sc = e.new(0x14)
+sl_, sr_ = e.new(4 * N), e.new(4 * N)
+e.wf(sl_, [0.1] * N)
+e.wf(sr_, [0.1] * N)
+e.mu.mem_write(sc, struct.pack("<IIIIBB2x", N, N, sl_, sr_, 0, 1))
+from unicorn.arm_const import UC_ARM_REG_S0  # noqa: E402
+e.mu.reg_write(UC_ARM_REG_S0, struct.unpack("<I", struct.pack("<f", 0.5))[0])
+e.call(SYM["pk_fx3_add"], sc)                           # a pad's FX3 send first (it runs before the block's FX3)
+first_send = list(cold)
+e.w32(RCC_AHB2ENR, 0)
+e.call(SYM["fx3_master"], B0, A2 + 20)
+e.mu.hook_del(hd2)
+check("warm reset: a pad's FX3 send and the next block switch the D2 SRAM clocks on before touching it",
+      not cold and e.r32(RCC_AHB2ENR) >> 29 == 7, (first_send, cold[:5]))
+
 done()

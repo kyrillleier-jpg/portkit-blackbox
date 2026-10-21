@@ -27,7 +27,7 @@ Alle SRAM-Baenke vor dem Boot mit 0xA5 gefuellt, Boot, Pad-Auswahl, zwei MIDI-No
 DMA, nicht verwendet). Keine Literal-Referenz der Firmware in D2-SRAM oder SRAM4 (die Treffer bei halbwortweiser Suche
 sind Befehlsfragmente, 0x38000000 bei 0x0805FEB0 ist die Float-Konstante 1/32768). blackbox-mod nutzt 0x2405FF54-
 0x2405FFFF und den Backup-SRAM 0x38800000-0x38800B1C. Nicht abgedeckt: Aufnahme, USB, Preset speichern.
-Offen (nicht verifiziert): Takt der D2-SRAMs (RCC_AHB2ENR SRAM1-3EN); Renode modelliert Clock-Gating nicht. SRAM4
+Takt der D2-SRAMs (RCC_AHB2ENR SRAM1-3EN): noetig und nach jedem Reset neu zu setzen, siehe "Boot-Loop nach dem Bank-2-Neustart"; Renode modelliert Clock-Gating nicht. SRAM4
 braucht keinen eigenen Takt-Schalter.
 
 Belegung durch portkit: SRAM4 0x38000000-0x380002FF Distortion (`bb/src/master.c`).
@@ -214,3 +214,18 @@ RX-FIFO, Interrupt-Last), Verhalten bei abgezogenem Kabel waehrend der Aufnahme.
 | Knoepfe | JOEBOX solo.c: das rechte Feld des Pads-Bildschirms (Knopf-Panel, btn_at {0x214, 0x174, 0xD4, 0x34} = von UNTEN nach oben, Renode-Bild; sein Kommentar sagt "top to bottom") bekommt Position 0 = MAC1-4 (IDs 0x1F4-0x1F7, MAC1 oben), 1 Clipboard, 2 MUTE/SOLO, 3 Velocity-Slider; Stepper 3 -> 4; beim Zeigen (0x67) wird das Panel der Position angewendet | test_solo.py (angepasst), Renode-Screenshot | durch Emulation bestaetigt |
 | Bank 1 | Logik in Bank 2 (Tick, Klick, Lichter, ohne Bank 2 kein Makro); dafuer auch fx3_send und die Smooth-Entscheidung (pk_smooth_decide) nach Bank 2: 184 Byte frei | Build | - |
 
+
+## Boot-Loop nach dem Bank-2-Neustart (2026-10-21)
+
+Am Geraet (fe16a01f und beide Bisect-Builds ohne Makros / ohne USB-in): erster Start in Ordnung (Pads-Bildschirm,
+Makros), nach dem Neustart des Bank-2-Loaders Schleife in einem fruehen Zustand. Ursache: fx3_run schaltete die
+D2-SRAM-Takte (RCC_AHB2ENR SRAM1-3EN) nur ein, solange FX3s Magic in SRAM4 ungueltig war. Ein Reset loescht das RCC,
+nicht SRAM4 (auch kurzes Aus/An nicht zuverlaessig): mit dem Magic aus dem vorigen Lauf greift der erste Block nach dem
+Neustart (Bank 2 jetzt gepaart) ungetaktet auf D2-SRAM zu - zuerst pk_fx3_add (FX3-Send eines Pads) auf den Akkumulator
+0x30044000 -, Bus-Fehler, JOEBOX-Fehlerbehandlung startet neu, Magic weiter gueltig: Schleife. Renode modelliert
+Takt-Gating nicht (Notiz "Takt der D2-SRAMs ... offen"), daher nur am Geraet.
+Korrektur: pk_d2_clocks() vor jedem D2-Zugriff (fx3_run, pk_fx3_add). test_jb.py "warm reset": RCC geloescht, Magic
+gesetzt, Speicher-Hook auf D2 - alter Build schlaegt fehl (Zugriffe ab 0x30044000 ungetaktet), neuer gruen.
+Status: durch Emulation bestaetigt, am Geraet offen.
+Diagnose-Build (build.py --diag, JOEBOX FAULT_SHOW) passt nicht in Bank 1 (568 Byte zu viel; JOEBOX kompiliert immer
+alle Quellen, Gruppen sparen keinen Code).

@@ -3,6 +3,8 @@
   python3 bb/joebox/build.py [--groups a,b,..]   -> out/bb/jb/release/BLACKBOX.bin + BBEXTRA.BIN
 
 --groups: the switchable groups to build in (bb/joebox/features.py); core groups always are. Default: all.
+--diag: JOEBOX's diagnostic build (FAULT_SHOW): a crash or watchdog reset shows its record on the screen and holds;
+  version "JBpkDIAG", output in out/bb/jb/release-diag (with cave.elf to read the addresses).
 Each selection also lands in out/bb/jb/builds/<groups hash>/ (with build.json), the last one in out/bb/jb/release.
 
 1. A clean export of blackbox-mod at the pinned commit (JOEBOX 1 rc4) into out/bb/jb/tree; our sources go into its
@@ -276,8 +278,14 @@ def make_tree():
     open(p, "w").write(s.replace('#define RELEASE_NAME "JOEBOX 1"', f'#define RELEASE_NAME "{NAME}"'))
 
 
-def build_mod(sets):
+def build_mod(sets, diag=False):
     env = dict(os.environ, RELEASE="1")
+    if diag:                                    # JOEBOX fault.c: a crash / watchdog reset draws its record and holds
+        env["FAULT_SHOW"] = "1"
+        p = os.path.join(TREE, "src", "cpu.c")
+        c = open(p).read()
+        assert c.count('const char fw_version[] = "JOE DIAG";') == 1
+        open(p, "w").write(c.replace('const char fw_version[] = "JOE DIAG";', 'const char fw_version[] = "JBpkDIAG";'))
     run(["sh", "build.sh"], cwd=TREE, env=env)
     run([sys.executable, "patch.py"] + sets, cwd=TREE)
     run(["sh", os.path.join("host", "build.sh")], cwd=TREE)      # host/libdsp.dylib for his test_*.py
@@ -323,10 +331,11 @@ def main(argv):
     if "--groups" in argv:
         sel = set(x for x in argv[argv.index("--groups") + 1].split(",") if x)
     groups = features.resolve(sel)
+    diag = "--diag" in argv
     sets = [s for s in MOD_SETS if s in groups]
     make_tree()
     edit_sources(groups)
-    img = build_mod(sets)
+    img = build_mod(sets, diag)
     base = open(img, "rb").read()
     sym = symbols(os.path.join(TREE, "out", "cave.elf"))
     assert "pk_clip_entry" in sym and "pk_wsola" in sym, "our sources are not in the cave / bank 2"
@@ -335,12 +344,14 @@ def main(argv):
     data, ranges = apply(base, sym, mod, groups)
     verify(base, data, ranges, sym, mod, groups)
     key = hashlib.sha256(",".join(sorted(groups)).encode()).hexdigest()[:10]
-    dirs = [os.path.join(OUT, "builds", key), os.path.join(OUT, "release")]
-    info = {"groups": sorted(groups), "joebox_sets": sets, "name": NAME, "files": {}}
+    tag = "-diag" if diag else ""
+    dirs = [os.path.join(OUT, "builds", key + tag), os.path.join(OUT, "release" + tag)]
+    info = {"groups": sorted(groups), "joebox_sets": sets, "name": "JBpkDIAG" if diag else NAME, "files": {}}
     for d in dirs:
         os.makedirs(d, exist_ok=True)
         open(os.path.join(d, "BLACKBOX.bin"), "wb").write(data)
         shutil.copyfile(os.path.join(TREE, "out", "BBEXTRA.BIN"), os.path.join(d, "BBEXTRA.BIN"))
+        shutil.copyfile(os.path.join(TREE, "out", "cave.elf"), os.path.join(d, "cave.elf"))   # to read crash PCs
     shutil.copyfile(os.path.join(TREE, "out", "cave.elf"), os.path.join(OUT, "cave.elf"))
     shutil.copyfile(os.path.join(TREE, "out", "bank2.bin"), os.path.join(OUT, "bank2.bin"))
     cave = os.path.getsize(os.path.join(TREE, "out", "cave.bin"))

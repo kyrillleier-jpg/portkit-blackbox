@@ -948,13 +948,24 @@ static const uint32_t plate_tmpl[44] = {     /* the stock init 0x08074d1c's resu
 static const uint8_t plate_word[12] = {8, 11, 14, 17, 20, 25, 30, 33, 37, 39, 41, 43};
 static const uint8_t plate_kb[12] = {2, 2, 2, 2, 4, 4, 32, 32, 32, 32, 32, 32};
 
+/* The D2 SRAM clocks (RCC_AHB2ENR SRAM1/2/3EN, bits 29..31) before ANY access to PK_D2_BUFS .. PK_D2_END, every time:
+   a reset clears the RCC but not SRAM4, so FX3's magic outlives it - when only the first call switched them on, the
+   first block after a warm reset (the bank 2 loader's restart, a watchdog reset) touched D2 SRAM unclocked and
+   faulted, every boot: the JB1+pk boot loop of 2026-10-21. */
+static void pk_d2_clocks(void)
+{
+    volatile uint32_t *ahb2enr = (volatile uint32_t *)0x580244dcu;
+    if ((*ahb2enr & (7u << 29)) != (7u << 29)) {
+        *ahb2enr |= 7u << 29;
+        (void)*ahb2enr;
+    }
+}
+
 static int fx3_run(uint8_t *bus0, int have, const int *set, float *sum_l, float *sum_r)
 {
     volatile struct fx3 *f = (volatile struct fx3 *)PK_FX3_STATE;
-    if (f->magic != PK_F3MAGIC) {                     /* first call: D2 SRAM clocks, plate, cleared memory */
-        volatile uint32_t *ahb2enr = (volatile uint32_t *)0x580244dcu;   /* RCC_AHB2ENR: SRAM1/2/3EN = bits 29..31 */
-        *ahb2enr |= 7u << 29;
-        (void)*ahb2enr;
+    pk_d2_clocks();
+    if (f->magic != PK_F3MAGIC) {                     /* first call: plate, cleared memory */
         uint32_t *stw = (uint32_t *)PK_PLATE;
         for (int k = 0; k < 44; k++)
             stw[k] = plate_tmpl[k];
@@ -1114,6 +1125,7 @@ void pk_fx3_add(const uint8_t *scratch, float g)
     volatile struct fx3 *f = PK_F3;
     if (f->magic != PK_F3MAGIC || !scratch || scratch[0x10])
         return;
+    pk_d2_clocks();                                     /* the accumulator is in D2 SRAM */
     int n = fw_buf_frames((void *)scratch);
     if (n <= 0 || n > MAXN)
         return;
