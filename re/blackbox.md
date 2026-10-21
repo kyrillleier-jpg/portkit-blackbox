@@ -226,6 +226,6 @@ Neustart (Bank 2 jetzt gepaart) ungetaktet auf D2-SRAM zu - zuerst pk_fx3_add (F
 Takt-Gating nicht (Notiz "Takt der D2-SRAMs ... offen"), daher nur am Geraet.
 Korrektur: pk_d2_clocks() vor jedem D2-Zugriff (fx3_run, pk_fx3_add). test_jb.py "warm reset": RCC geloescht, Magic
 gesetzt, Speicher-Hook auf D2 - alter Build schlaegt fehl (Zugriffe ab 0x30044000 ungetaktet), neuer gruen.
-Status: durch Emulation bestaetigt, am Geraet offen.
+Status: **hardware-verified** (b437d833 bootet nach dem Bank-2-Neustart, Rueckmeldung 2026-10-21).
 Diagnose-Build (build.py --diag, JOEBOX FAULT_SHOW) passt nicht in Bank 1 (568 Byte zu viel; JOEBOX kompiliert immer
 alle Quellen, Gruppen sparen keinen Code).
