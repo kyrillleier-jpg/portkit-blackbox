@@ -107,10 +107,6 @@ def plan(groups):
         calls.append((0x08053516, 0x0804DA6C, "fx3_master"))        # FX sum (FX rec) and FX3
     if "pk_fx3" in pk:
         thunks += FX3_SENDS
-    if "pk_hpout3" in pk:
-        calls.append((0x0808D51C, 0x0808C12C, "out3_register"))     # Out 3 Vol registered up to 101 % (= mirror)
-        calls.append((0x080A92B0, 0x080C89F4, "out3_text_thunk"))   # list row percent text: 101 % reads "Mirror HP"
-        calls.append((0x080B0642, 0x080C89F4, "out3_text2_thunk"))  # ... and the Tools list's rows
     if "pk_recsends" in pk:
         calls.append((0x0809D5FA, 0x08094A1C, "rec_reinit"))         # recording: pad rebuilt, sends kept
     if "pk_fxrec" in pk:

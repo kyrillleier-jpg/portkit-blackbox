@@ -25,4 +25,6 @@
 #define P_S_REL      0x233   /* global, xml pksslrelease */
 #define P_S_GAIN     0x234   /* global, xml pksslgain */
 #define P_S_MIX      0x235   /* global, xml pksslmix */
+#define P_MIRROR     0x238   /* global, xml pkmirror */
+#define P_MIRRORVOL  0x239   /* global, xml pkmirrorvol */
 #endif

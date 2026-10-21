@@ -781,60 +781,43 @@ e.mu.hook_del(hd2)
 check("warm reset: a pad's FX3 send and the next block switch the D2 SRAM clocks on before touching it",
       not cold and e.r32(RCC_AHB2ENR) >> 29 == 7, (first_send, cold[:5]))
 
-# --- Out 3 mirrors the headphones above 100 % (pk_hpout3)
-vols = {pid: entry(pid) for pid in (0xBA, 0xBB, 0xBC, 0xBD)}
-check("Out 3 Vol registered up to 101 % (1010); Headphone, Out 1 and Out 2 Vol still end at 100 %",
-      vols[0xBD][6] == 1010 and all(vols[p][6] == 1000 for p in (0xBA, 0xBB, 0xBC)),
-      {hex(p): v[5:7] for p, v in vols.items()})
+# --- Out 3 mirrors the headphones (pk_hpout3): Mirror Off / On and Mirror Vol on the page INFO opens on Headphone
+import ids as pkids  # noqa: E402  (the name ids is a list further up)
+P_MIRROR, P_MIRRORVOL = pkids.ident("MIRROR"), pkids.ident("MIRRORVOL")
+mr, mv = entry(P_MIRROR), entry(P_MIRRORVOL)
+check("Mirror (Off / On) and Mirror Vol (0..100 %) registered; Out 3 Vol back to a plain 0..100 %",
+      [e.cstr(e.r32(mr[3] + 4 * k)) for k in range(mr[4])] == ["Off", "On"] and (mv[1], mv[5], mv[6]) == (8, 0, 1000)
+      and entry(0xBD)[6] == 1000, (mr[4], mv[5:7], entry(0xBD)[6]))
+check("defaults: Mirror Off, Mirror Vol 100 %", e.call(0x08093E9C, SETTINGS, P_MIRROR) == 0
+      and e.call(0x08093E9C, SETTINGS, P_MIRRORVOL) == 1000)
+HA, HB = e.new(4 * N), e.new(4 * N)
+e.wf(HA, [0.5] * N)
+
+
+def source(mirror, vol, b2=1):
+    e.call(STORE_SET, SETTINGS, P_MIRROR, mirror)
+    e.call(STORE_SET, SETTINGS, P_MIRRORVOL, vol)
+    live[0] = b2
+    r = e.call(SYM["out3_source"], HA, HB, N)
+    live[0] = 1
+    return r
+
+
+off, full, half, nob2 = source(0, 1000), source(1, 1000), source(1, 500), source(1, 500, b2=0)
+check("Out 3's source: Mirror Off -> its own bus; On at 100 % -> the headphone mix itself; at 50 % the mix at "
+      "-12 dB (squared fader curve); without bank 2 the mix unscaled",
+      off == HB and full == HA and half not in (HA, HB) and abs(e.rf(half, 1)[0] - 0.125) < 1e-6 and nob2 == HA,
+      (hex(off), hex(full), hex(half), e.rf(half, 1) if half not in (HA, HB) else None))
 dac = []
 e.stub(0x0806002C, lambda uc: dac.append(uc.reg_read(UC_ARM_REG_R1)))
-HA, HB, HC, HDST = e.new(4 * N), e.new(4 * N), e.new(4 * N), e.new(16 * N)
-
-
-def tap(out3vol):
-    e.call(STORE_SET, SETTINGS, 0xBD, out3vol)
-    dac.clear()
+HC, HDST = e.new(4 * N), e.new(16 * N)
+for mirror in (0, 1):
+    e.call(STORE_SET, SETTINGS, P_MIRROR, mirror)
+    e.call(STORE_SET, SETTINGS, P_MIRRORVOL, 1000)
     e.call(SYM["usbaud_tap"], HA, HB, HC, N, stack=(HDST, 4))
-    return dac[0]
-
-
-check("Out 3 Vol 100 %: the converter gets Out 3's own bus; 101 %: the headphone mix in its place",
-      tap(1000) == HB and tap(1010) == HA and tap(500) == HB, [hex(tap(v)) for v in (1000, 1010)])
 e.unstub(0x0806002C)
-e.call(STORE_SET, SETTINGS, 0xBD, 1000)
-
-# the Tools list shows "Mirror HP" above 100 % (out3_text_thunk at the percent snprintf 0x080a92b0)
-from unicorn.arm_const import UC_ARM_REG_R4  # noqa: E402
-fmt_calls = []
-e.stub(0x080C89F4, lambda uc: fmt_calls.append(uc.reg_read(UC_ARM_REG_R0)))
-ROW, TXT = e.new(0x100), e.new(0x20)
-
-
-def row_text(pid, value):
-    e.mu.mem_write(ROW + 0x94, struct.pack("<HBBi", pid, 8, 0, value))
-    e.mu.mem_write(TXT, b"\xee" * 0x20)
-    fmt_calls.clear()
-    e.call(SYM["out3_text_thunk"], TXT, 0x1F, 0, 0, regs=[(UC_ARM_REG_R4, ROW)])
-    return bytes(e.mu.mem_read(TXT, 16)).split(b"\0")[0].decode("latin-1"), len(fmt_calls)
-
-
-check("Out 3 Vol at 101 % reads 'Mirror HP'; at 100 %, and any other percent row (Grain Speed 150 %), as before",
-      row_text(0xBD, 1010) == ("Mirror HP", 0) and row_text(0xBD, 1000)[1] == 1 and row_text(0x5D, 1500)[1] == 1,
-      [row_text(0xBD, 1010), row_text(0xBD, 1000), row_text(0x5D, 1500)])
-
-
-def row2_text(pid, value):
-    e.mu.mem_write(ROW + 0x14, struct.pack("<I", pid))
-    e.mu.mem_write(ROW + 0x34, struct.pack("<i", value))
-    e.mu.mem_write(TXT, b"\xee" * 0x20)
-    fmt_calls.clear()
-    e.call(SYM["out3_text2_thunk"], TXT, 0x20, 0, 0, regs=[(UC_ARM_REG_R4, ROW)])
-    return bytes(e.mu.mem_read(TXT, 16)).split(b"\0")[0].decode("latin-1"), len(fmt_calls)
-
-
-check("the Tools list rows likewise (widget id +0x14, value +0x34)",
-      row2_text(0xBD, 1010) == ("Mirror HP", 0) and row2_text(0xBD, 1000)[1] == 1 and row2_text(0x7F, 1010)[1] == 1,
-      [row2_text(0xBD, 1010), row2_text(0xBD, 1000), row2_text(0x7F, 1010)])
-e.unstub(0x080C89F4)
+check("JOEBOX's converter tap: Out 3 gets its bus with Mirror Off and the headphone mix with Mirror On", dac == [HB, HA],
+      [hex(x) for x in dac])
+e.call(STORE_SET, SETTINGS, P_MIRROR, 0)
 
 done()

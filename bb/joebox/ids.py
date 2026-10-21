@@ -43,6 +43,9 @@ PARAMS = {
     "S_REL":    (0x233, "global", "pksslrelease"),
     "S_GAIN":   (0x234, "global", "pksslgain"),
     "S_MIX":    (0x235, "global", "pksslmix"),
+    # global: Out 3 mirrors the headphone mix (INFO on Tools > Headphone)
+    "MIRROR":   (0x238, "global", "pkmirror"),
+    "MIRRORVOL": (0x239, "global", "pkmirrorvol"),
 }
 
 assert all(FIRST <= v[0] < TABLE_SLOTS for v in PARAMS.values())

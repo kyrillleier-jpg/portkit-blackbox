@@ -1631,3 +1631,36 @@ int pk_smooth_decide(const uint8_t *pad, float *frac, const int32_t *srcbuf, flo
     PK_WCTX->g = g;
     return 1;
 }
+
+/* ============================================ Out 3 mirrors the headphones (pk_hpout3) ============================ */
+/* the headphone mix (one side of bus a) at Mirror Vol, for the converter's Out 3 slot; a squared curve like a fader
+   (100 % = the mix as it is, 50 % = -12 dB). 100 % hands the mix itself on. */
+const float *pk_mirror_scale(const float *a, int frames, int vol)
+{
+    if (vol >= 1000 || !a)
+        return a;
+    if (frames <= 0 || frames > 128)
+        frames = 128;
+    float g = (vol > 0 ? (float)vol : 0.0f) * 0.001f;
+    g *= g;
+    float *o = PK_MIRROR_BUF;
+    for (int i = 0; i < frames; i++)
+        o[i] = a[i] * g;
+    return o;
+}
+
+/* ============================================ recording: the pad rebuilt, its sends kept (moved from bank 1) ======== */
+typedef void (*pk_store_init_fn)(void *store, const uint8_t *type);
+typedef void (*pk_store_set_fn)(void *store, unsigned param, int value);
+
+void pk_rec_reinit(void *store, const uint8_t *type)
+{
+    static const uint16_t sends[3] = {0xd9, 0xda, P_FX3SEND};
+    int v[3];
+    for (int k = 0; k < 3; k++)
+        v[k] = ((pk_setting_fn)FN(0x08093e9c))(store, sends[k]);
+    ((pk_store_init_fn)FN(0x08094a1c))(store, type);
+    for (int k = 0; k < 3; k++)
+        if (v[k])
+            ((pk_store_set_fn)FN(0x08093ecc))(store, sends[k], v[k]);
+}

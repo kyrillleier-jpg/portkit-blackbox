@@ -127,9 +127,10 @@ void sync_register(void *table, int param, const char *label, const char *const 
 
 /* type 0 = list (names by index, max = count). Packed (bank 1 is nearly full): label and xml name in one string
    ("Label:\0xmlname"), dB ranges in whole dB (all are), names as an index into pnames */
-enum { N_NONE, N_DIST, N_RVB, N_SMODE, N_SRATIO, N_SATTACK, N_SREL, N_PLAYLEN };
+enum { N_NONE, N_DIST, N_RVB, N_SMODE, N_SRATIO, N_SATTACK, N_SREL, N_ONOFF, N_PLAYLEN };
+static const char *const onoff_names[2] = {"Off", "On"};
 static const char *const *const pnames[N_PLAYLEN] = {0, dist_names, rvb_names, smode_names, sratio_names,
-                                                     sattack_names, srel_names};
+                                                     sattack_names, srel_names, onoff_names};
 struct pdef { const char *lx; int16_t min, max; uint16_t id; uint8_t type, names; };
 static const struct pdef pdefs[] = {
     {"Dist Type:\0pkdtype", 0, 5, P_D_TYPE, 0, N_DIST},
@@ -155,6 +156,8 @@ static const struct pdef pdefs[] = {
     {"SSL Release:\0pksslrelease", 0, 5, P_S_REL, 0, N_SREL},
     {"SSL Gain:\0pksslgain", -12, 24, P_S_GAIN, TYPE_DB, 0},
     {"SSL Mix:\0pksslmix", 0, 1000, P_S_MIX, TYPE_PCT, 0},
+    {"Mirror:\0pkmirror", 0, 2, P_MIRROR, 0, N_ONOFF},
+    {"Mirror Vol:\0pkmirrorvol", 0, 1000, P_MIRRORVOL, TYPE_PCT, 0},
 };
 #define NPDEFS (int)(sizeof pdefs / sizeof pdefs[0])
 
@@ -185,6 +188,7 @@ void bb_defaults(void *store, int param, int value)
         {P_D_TYPE, 0}, {P_D_DRIVE, 12000}, {P_D_TONE, 1000}, {P_D_MIX, 1000}, {P_D_LEVEL, 0},
         {P_R_TYPE, 0}, {P_R_DECAY, 600}, {P_R_DAMP, 500}, {P_R_PREDLY, 0}, {P_R_SIZE, 500}, {P_R_LEVEL, 500},
         {P_S_THRESH, -16000}, {P_S_RATIO, 0}, {P_S_ATTACK, 5}, {P_S_REL, 4}, {P_S_GAIN, 0}, {P_S_MIX, 1000},
+        {P_MIRROR, 0}, {P_MIRRORVOL, 1000},
     };
     for (unsigned k = 0; k < sizeof def / sizeof def[0]; k++)
         fw_store_add(store, def[k][0], def[k][1]);
@@ -426,18 +430,15 @@ void fx3_send(uint8_t *scratch, const uint8_t *pad)
         pk_fx3_send(scratch, pad);                      /* bank 2 reads the send and applies the curve */
 }
 
-/* --- Out 3 can mirror the headphones (pk_hpout3): Out 3 Vol goes one step past 100 % (1010) and there Out 3 plays
-   the headphone mix (JOEBOX usbdev.c's usbaud_tap hands it to the converter in Out 3's place, build.py HPOUT3_EDITS;
-   USB 5-6 stay the real Out 3) */
-#define P_OUT3VOL 0xbd
-void out3_register(void *table, int param, int type, const char *label, int min, int max, const char *xml)
+/* --- Out 3 can mirror the headphones (pk_hpout3): Mirror Off / On and Mirror Vol (global, on the page INFO opens on
+   Tools > Headphone). JOEBOX usbdev.c's usbaud_tap asks for Out 3's source (build.py HPOUT3_EDITS): its own bus, or
+   the headphone mix (bus a, ahead of the headphone volume: independent of it, checked on the unit) at Mirror Vol.
+   USB 5-6 stay the real Out 3. */
+const float *out3_source(const float *a, const float *b, int frames)
 {
-    fw_register_num(table, param, type, label, min, param == P_OUT3VOL ? 1010 : max, xml);   /* 0x0808d51c */
-}
-
-int out3_mirror(void)
-{
-    return fw_setting(SETTINGS, P_OUT3VOL) > 1000;
+    if (fw_setting(SETTINGS, P_MIRROR) != 1)
+        return b;
+    return b2_live() ? pk_mirror_scale(a, frames, fw_setting(SETTINGS, P_MIRRORVOL)) : a;
 }
 
 /* performance macros (JOEBOX duck.c / solo.c call these, build.py MACRO_EDITS); the work is in bank 2 */
@@ -483,17 +484,13 @@ typedef void (*copy_fn)(void *dst, const void *src);
 #define fw_buf_copy   ((copy_fn)FN(0x0804d880))
 
 /* 1-2 s into a recording the firmware rebuilds the pad's record as a clip record (0x0809d5fa -> 0x08094a1c), every
-   setting back to its default: the FX1 / FX2 / FX3 sends are kept (Bitbox micro: src/recmon.c) */
+   setting back to its default: bank 2 keeps the FX1 / FX2 / FX3 sends (pk_rec_reinit); without it stock's rebuild */
 void rec_reinit(void *store, const uint8_t *type)
 {
-    static const uint16_t sends[3] = {0xd9, 0xda, P_FX3SEND};
-    int v[3];
-    for (int k = 0; k < 3; k++)
-        v[k] = fw_setting(store, sends[k]);
-    fw_store_init(store, type);
-    for (int k = 0; k < 3; k++)
-        if (v[k])
-            fw_store_set(store, sends[k], v[k]);
+    if (b2_live())
+        pk_rec_reinit(store, type);
+    else
+        fw_store_init(store, type);
 }
 
 /* Rec Input (0x9a): the stock four (list 0x080ec704: L+R, Left, Right, Resam) + FX (+ USB), appended (stored values

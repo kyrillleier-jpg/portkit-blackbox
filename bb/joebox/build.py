@@ -240,14 +240,30 @@ MACRO_EDITS = [
 ]
 
 
-# Out 3 mirrors the headphones (pk_hpout3): with Out 3 Vol above 100 % JOEBOX's converter tap hands the headphone mix
-# (bus a) to the converter in Out 3's place (bus b); its USB ring keeps the real Out 3.
+# Out 3 mirrors the headphones (pk_hpout3): JOEBOX's converter tap asks out3_source() for Out 3's bus (its own, or the
+# headphone mix at Mirror Vol); its USB ring keeps the real Out 3. INFO on Tools > Headphone opens a knob page
+# (master.c's mechanism for Compressor / Master FX) with Headphone, Mirror, Mirror Vol.
 HPOUT3_EDITS = [
     ("src/usbdev.c", "    fw_to_dac(a, b, c, frames, dst, stride);\n",
-     "    fw_to_dac(a, out3_mirror() ? a : b, c, frames, dst, stride);   /* portkit: Out 3 = headphones above 100 % */\n"),
+     "    fw_to_dac(a, out3_source(a, b, frames), c, frames, dst, stride);   /* portkit: Out 3 = its bus or the mirror */\n"),
     ("src/usbdev.c", "void usbaud_tap(const float *a, const float *b, const float *c, int frames, uint32_t *dst, int stride)\n{\n",
-     "int out3_mirror(void);           /* portkit pk_main.c: Out 3 Vol > 100 % */\n"
+     "const float *out3_source(const float *a, const float *b, int frames);   /* portkit pk_main.c */\n"
      "void usbaud_tap(const float *a, const float *b, const float *c, int frames, uint32_t *dst, int stride)\n{\n"),
+    ("src/master.c", "enum { PAGE_COMP, PAGE_MFX, PAGE_MFX2, PAGE_INS };",
+     "enum { PAGE_COMP, PAGE_MFX, PAGE_MFX2, PAGE_INS, PAGE_HP };   /* PAGE_HP: portkit */"),
+    ("src/master.c", "    if (UI->page != PAGE_COMP && fw_setting(SETTINGS, P_MFX) == MFX_PRISM) {\n",
+     "    if (UI->page == PAGE_HP) {                               /* portkit: headphones and Out 3's mirror */\n"
+     "        static const uint16_t page_hp[] = {0xba, 0x238, 0x239, 0};   /* Headphone, Mirror, Mirror Vol */\n"
+     "        for (const uint16_t *id = page_hp; *id; id++)\n"
+     "            fw_list_add(list, *id, fw_setting(SETTINGS, *id));\n"
+     "        return 1;\n    }\n"
+     "    if (UI->page != PAGE_COMP && fw_setting(SETTINGS, P_MFX) == MFX_PRISM) {\n"),
+    ("src/master.c", '    if (UI->page == PAGE_COMP)\n        return "Comp";\n',
+     '    if (UI->page == PAGE_COMP)\n        return "Comp";\n    if (UI->page == PAGE_HP)\n        return "Phones";   /* portkit */\n'),
+    ("src/master.c", "    else if (row == P_MFX)\n        open_page(app, PAGE_MFX);\n",
+     "    else if (row == P_MFX)\n        open_page(app, PAGE_MFX);\n"
+     "    else if (row == 0xba)                                    /* portkit: Headphone -> its page with the mirror */\n"
+     "        open_page(app, PAGE_HP);\n"),
 ]
 
 

@@ -33,6 +33,7 @@
 #define PK_USBIN_L     ((float *)0x38006000u)    /* .. 0x380061ff  one block of it, rate-matched, for the recorder */
 #define PK_USBIN_R     ((float *)0x38006200u)    /* .. 0x380063ff */
 #define PK_USBIN_BUF   0x38006400u               /* .. 0x38006413  a buffer struct around them (as PK_FXSUM_BUF) */
+#define PK_MIRROR_BUF  ((float *)0x38006600u)    /* .. 0x380067ff  the headphone mix at Mirror Vol, for Out 3 */
 #define PK_USBIN_RD    0x38006500u               /* .. 0x3800653f  the reader's state (task only, struct usbin_rd) */
 
 /* --- WSOLA ---------------------------------------------------------------------------------------------------------- */
@@ -161,6 +162,8 @@ void pk_macro_tick(uint8_t *engine, float dt_ms);   /* bank 2, audio task: glide
 void pk_macro_click(uint8_t *view, unsigned k);    /* bank 2, screen: toggle macro k, button lights */
 void pk_macro_lights(uint8_t *view);               /* bank 2, screen */
 void pk_fx3_send(uint8_t *scratch, const uint8_t *pad);  /* bank 2: a pad's FX3 send into the accumulator */
+const float *pk_mirror_scale(const float *a, int frames, int vol);   /* bank 2: Out 3's mirror at Mirror Vol */
+void pk_rec_reinit(void *store, const uint8_t *type);   /* bank 2: the pad rebuilt mid-recording, sends kept */
 int pk_smooth_decide(const uint8_t *pad, float *frac, const int32_t *srcbuf, float rate);  /* bank 2: Smooth
                               stretch for this slot? sets PK_WCTX->g (bank 1 adds readers and speed) */
 
