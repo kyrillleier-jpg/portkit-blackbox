@@ -103,7 +103,8 @@ Only needed if you want to change something or pick your own feature set. You ne
 The build exports the pinned JOEBOX commit (66329ad) from your clone, runs JOEBOX's own build and patcher, then applies
 portkit's patches. Nothing is written unless every check passes: expected stock bytes at every patch site, all changes
 inside registered ranges, every redirected call and pointer lands on a known function, the image fits where the
-1010music installer accepts it. JOEBOX's own 30 test suites run on the merged tree (`out/bb/jb/tree/test_*.py`).
+1010music installer accepts it. JOEBOX's own 30 test suites run on the merged tree (`out/bb/jb/tree/test_*.py`; all of them in parallel:
+`.venv/bin/python -I tests/run_joebox.py`, about 6 min).
 With `PORTKIT_MICRO=<built portkit-micro checkout>`, `test_jb.py` also checks that distortion and SSL are
 bit-identical to the bitbox micro's.
 
