@@ -237,4 +237,5 @@ alle Quellen, Gruppen sparen keinen Code).
 | Busse | FUN_0806002c(a, b, c, ...) wandelt drei Stereo-Busse fuer den Wandler: a = Kopfhoerer-Mix, b = Out 3, c = Out 1 (JOEBOX usbdev.c, aus Aufnahmen); JOEBOX' usbaud_tap haengt dort | usbdev.c | gelesen |
 | Schalter | Out 3 Vol (0xBD, Prozent 0..1000) wird nach unserem Registrierungsblock registriert (Aufruf 0x0808D51C, Index 152 > 131): dieser Aufruf geht an out3_register, das nur fuer 0xBD max 1010 setzt; > 1000 = Spiegeln | Unicorn-Lauf der Registrierung, test_jb.py | durch Emulation bestaetigt |
 | Spiegeln | usbaud_tap: fw_to_dac(a, out3_mirror() ? a : b, c, ...); der USB-Ring bekommt weiter b (USB 5-6 = echtes Out 3) | test_jb.py (Wandler-Argument) | durch Emulation bestaetigt |
+| Anzeige | Prozent-Text (Typ 8) per snprintf in zwei Widget-Klassen: FUN_080a9120 (Param-Id +0x94, Wert +0x98, Aufruf 0x080A92B0) und FUN_080b0528 = Tools-Listenzeilen (Widget-Id +0x14 = Param-Id, Rohwert +0x34, Aufruf 0x080B0642; per Renode-Speicherauszug der Zeile "Out 3 Vol:" bestimmt): fuer 0xBD > 1000 "Mirror HP" | test_jb.py, Renode-Screenshot | durch Emulation bestaetigt |
 

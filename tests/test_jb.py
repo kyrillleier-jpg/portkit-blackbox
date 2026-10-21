@@ -803,4 +803,38 @@ check("Out 3 Vol 100 %: the converter gets Out 3's own bus; 101 %: the headphone
 e.unstub(0x0806002C)
 e.call(STORE_SET, SETTINGS, 0xBD, 1000)
 
+# the Tools list shows "Mirror HP" above 100 % (out3_text_thunk at the percent snprintf 0x080a92b0)
+from unicorn.arm_const import UC_ARM_REG_R4  # noqa: E402
+fmt_calls = []
+e.stub(0x080C89F4, lambda uc: fmt_calls.append(uc.reg_read(UC_ARM_REG_R0)))
+ROW, TXT = e.new(0x100), e.new(0x20)
+
+
+def row_text(pid, value):
+    e.mu.mem_write(ROW + 0x94, struct.pack("<HBBi", pid, 8, 0, value))
+    e.mu.mem_write(TXT, b"\xee" * 0x20)
+    fmt_calls.clear()
+    e.call(SYM["out3_text_thunk"], TXT, 0x1F, 0, 0, regs=[(UC_ARM_REG_R4, ROW)])
+    return bytes(e.mu.mem_read(TXT, 16)).split(b"\0")[0].decode("latin-1"), len(fmt_calls)
+
+
+check("Out 3 Vol at 101 % reads 'Mirror HP'; at 100 %, and any other percent row (Grain Speed 150 %), as before",
+      row_text(0xBD, 1010) == ("Mirror HP", 0) and row_text(0xBD, 1000)[1] == 1 and row_text(0x5D, 1500)[1] == 1,
+      [row_text(0xBD, 1010), row_text(0xBD, 1000), row_text(0x5D, 1500)])
+
+
+def row2_text(pid, value):
+    e.mu.mem_write(ROW + 0x14, struct.pack("<I", pid))
+    e.mu.mem_write(ROW + 0x34, struct.pack("<i", value))
+    e.mu.mem_write(TXT, b"\xee" * 0x20)
+    fmt_calls.clear()
+    e.call(SYM["out3_text2_thunk"], TXT, 0x20, 0, 0, regs=[(UC_ARM_REG_R4, ROW)])
+    return bytes(e.mu.mem_read(TXT, 16)).split(b"\0")[0].decode("latin-1"), len(fmt_calls)
+
+
+check("the Tools list rows likewise (widget id +0x14, value +0x34)",
+      row2_text(0xBD, 1010) == ("Mirror HP", 0) and row2_text(0xBD, 1000)[1] == 1 and row2_text(0x7F, 1010)[1] == 1,
+      [row2_text(0xBD, 1010), row2_text(0xBD, 1000), row2_text(0x7F, 1010)])
+e.unstub(0x080C89F4)
+
 done()
