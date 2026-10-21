@@ -264,6 +264,11 @@ HPOUT3_EDITS = [
      "    else if (row == P_MFX)\n        open_page(app, PAGE_MFX);\n"
      "    else if (row == 0xba)                                    /* portkit: Headphone -> its page with the mirror */\n"
      "        open_page(app, PAGE_HP);\n"),
+    # his test: "any other row" was Headphone, which now has a page: Out 1 Vol is the other row; Headphone checked too
+    ("test_master.py", 'select(0xBA)\ncheck("INFO on any other Tools row: what stock did (re-show Tools), no knob page", press("master_tools_info", 0x26, 0, 0) == [(0x26, 0x310)] and e.r8(UI + 1) == 0)',
+     'select(0xBB)\ncheck("INFO on any other Tools row (Out 1 Vol): what stock did (re-show Tools), no knob page", press("master_tools_info", 0x26, 0, 0) == [(0x26, 0x310)] and e.r8(UI + 1) == 0)\n'
+     'select(0xBA)\ncheck("portkit: INFO on Headphone opens its knob page (Mirror)", press("master_tools_info", 0x26, 0, 0) == [(0x23, 0x40)] and e.r8(UI) == 4 and e.r8(UI + 1) == 1)\n'
+     'e.uc.mem_write(UI, bytes([0, 0]))'),
 ]
 
 
